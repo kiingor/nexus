@@ -1,26 +1,82 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --orange-500: #FF6B00;
+  --orange-400: #FF8533;
+  --orange-300: #FF9A3C;
+  --surface-glass: rgba(255, 255, 255, 0.04);
+  --surface-glass-hover: rgba(255, 255, 255, 0.07);
+  --border-glass: rgba(255, 255, 255, 0.08);
+  --border-orange: rgba(255, 107, 0, 0.3);
+  --bg-base: #0A0A0B;
+  --bg-surface: #111113;
+  --text-primary: #F5F5F0;
+  --text-secondary: #8A8A85;
+  --text-muted: #4A4A48;
+  --glow-orange: 0 0 0 1px rgba(255, 107, 0, 0.4), 0 0 20px rgba(255, 107, 0, 0.15);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-orange-500: var(--orange-500);
+  --color-orange-400: var(--orange-400);
+  --color-orange-300: var(--orange-300);
+  --color-glass: var(--surface-glass);
+  --color-glass-hover: var(--surface-glass-hover);
+  --color-glass-border: var(--border-glass);
+  --color-border-orange: var(--border-orange);
+  --color-base: var(--bg-base);
+  --color-surface: var(--bg-surface);
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --font-display: var(--font-syne);
+  --font-sans: var(--font-dm-sans);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans, 'DM Sans', sans-serif);
+}
+
+/* Glass utilities */
+.glass {
+  background: var(--surface-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-glass);
+  border-radius: 16px;
+}
+
+.glass-hover:hover {
+  background: var(--surface-glass-hover);
+}
+
+.glow-orange {
+  box-shadow: var(--glow-orange);
+}
+
+/* JSON syntax highlighting */
+.json-key { color: var(--orange-400); }
+.json-string { color: #A8D8A8; }
+.json-number { color: #82AAFF; }
+.json-boolean { color: #C792EA; }
+.json-null { color: var(--text-muted); }
+
+/* Selection */
+::selection {
+  background: rgba(255, 107, 0, 0.3);
+  color: white;
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid var(--orange-500);
+  outline-offset: 2px;
 }

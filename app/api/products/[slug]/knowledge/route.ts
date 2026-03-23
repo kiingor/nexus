@@ -48,6 +48,21 @@ export async function POST(
   const supabase = createServerClient()
   const body = await request.json()
 
+  // Validate module_id exists
+  if (!body.module_id) {
+    return Response.json({ error: 'module_id é obrigatório' }, { status: 400 })
+  }
+
+  const { data: moduleExists } = await supabase
+    .from('modules')
+    .select('id')
+    .eq('id', body.module_id)
+    .single()
+
+  if (!moduleExists) {
+    return Response.json({ error: `Módulo ${body.module_id} não encontrado` }, { status: 404 })
+  }
+
   const { data, error } = await supabase
     .from('knowledge_items')
     .insert({

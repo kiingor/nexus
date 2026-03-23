@@ -44,7 +44,7 @@ export function ModuleList({ productSlug }: ModuleListProps) {
     fetchData()
   }, [fetchData])
 
-  async function handleCreate(data: { name: string; type: 'instruction' | 'error'; description: string }) {
+  async function handleCreate(data: { name: string; type: 'instruction' | 'error'; description: string; keywords: string[] }) {
     const res = await fetch(`/api/products/${productSlug}/modules`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -59,7 +59,7 @@ export function ModuleList({ productSlug }: ModuleListProps) {
     }
   }
 
-  async function handleEdit(data: { name: string; type: 'instruction' | 'error'; description: string }) {
+  async function handleEdit(data: { name: string; type: 'instruction' | 'error'; description: string; keywords: string[] }) {
     if (!editingModule) return
     const res = await fetch(`/api/products/${productSlug}/modules/${editingModule.id}`, {
       method: 'PUT',

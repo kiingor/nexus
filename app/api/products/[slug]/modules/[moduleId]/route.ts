@@ -35,6 +35,7 @@ export async function PUT(
       name: body.name,
       type: body.type,
       description: body.description || null,
+      keywords: body.keywords || [],
     })
     .eq('id', moduleId)
     .select()

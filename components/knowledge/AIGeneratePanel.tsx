@@ -13,14 +13,13 @@ import type { InstructionContent, ErrorContent } from '@/lib/types'
 interface AIGeneratePanelProps {
   open: boolean
   onClose: () => void
-  onSave: (data: { title: string; content: InstructionContent | ErrorContent; keywords: string[] }) => Promise<void>
+  onSave: (data: { title: string; content: InstructionContent | ErrorContent }) => Promise<void>
   moduleType: 'instruction' | 'error'
 }
 
 export function AIGeneratePanel({ open, onClose, onSave, moduleType }: AIGeneratePanelProps) {
   const [prompt, setPrompt] = useState('')
   const [title, setTitle] = useState('')
-  const [keywords, setKeywords] = useState<string[]>([])
   const [generatedContent, setGeneratedContent] = useState<InstructionContent | ErrorContent | null>(null)
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -47,7 +46,6 @@ export function AIGeneratePanel({ open, onClose, onSave, moduleType }: AIGenerat
 
       const data = await res.json()
       setTitle(data.title || '')
-      setKeywords(data.keywords || [])
       setGeneratedContent(data.content)
     } catch {
       setError('Erro de conexão. Tente novamente.')
@@ -60,10 +58,9 @@ export function AIGeneratePanel({ open, onClose, onSave, moduleType }: AIGenerat
     if (!generatedContent || !title) return
     setSaving(true)
     try {
-      await onSave({ title, content: generatedContent, keywords })
+      await onSave({ title, content: generatedContent })
       setPrompt('')
       setTitle('')
-      setKeywords([])
       setGeneratedContent(null)
       onClose()
     } finally {
@@ -74,7 +71,6 @@ export function AIGeneratePanel({ open, onClose, onSave, moduleType }: AIGenerat
   function handleClose() {
     setPrompt('')
     setTitle('')
-    setKeywords([])
     setGeneratedContent(null)
     setError('')
     onClose()

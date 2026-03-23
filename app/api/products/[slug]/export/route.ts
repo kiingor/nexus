@@ -29,7 +29,7 @@ export async function GET(
 
   const { data: items } = await supabase
     .from('knowledge_items')
-    .select('*, modules!inner(product_id, name)')
+    .select('*, modules!inner(product_id, name, keywords)')
     .eq('modules.product_id', product.id)
     .eq('is_active', true)
     .order('created_at', { ascending: true })
@@ -43,14 +43,16 @@ export async function GET(
   }
 
   for (const item of items || []) {
-    const moduleName = (item as Record<string, unknown> & { modules: { name: string } }).modules?.name || ''
+    const mod = (item as Record<string, unknown> & { modules: { name: string; keywords: string[] } }).modules
+    const moduleName = mod?.name || ''
+    const moduleKeywords = mod?.keywords || []
 
     if (item.type === 'instruction') {
       const content = item.content as InstructionContent
       exportData.instrucoes.push({
         modulo: moduleName,
         titulo: item.title,
-        palavras_chave: item.keywords || [],
+        palavras_chave: moduleKeywords,
         passos: content.steps.map((s) => ({
           passo: s.passo,
           acao: s.acao,
@@ -63,7 +65,7 @@ export async function GET(
       exportData.erros.push({
         modulo: moduleName,
         titulo: item.title,
-        palavras_chave: item.keywords || [],
+        palavras_chave: moduleKeywords,
         codigo: content.error_code,
         descricao: content.description,
         causa: content.cause,

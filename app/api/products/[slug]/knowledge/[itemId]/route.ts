@@ -33,7 +33,6 @@ export async function PUT(
 
   if (body.title !== undefined) updateData.title = body.title
   if (body.content !== undefined) updateData.content = body.content
-  if (body.keywords !== undefined) updateData.keywords = body.keywords
   if (body.is_active !== undefined) updateData.is_active = body.is_active
 
   const { data, error } = await supabase

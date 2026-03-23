@@ -70,7 +70,6 @@ export async function POST(
       title: body.title,
       type: body.type,
       content: body.content,
-      keywords: body.keywords || [],
       is_active: true,
     })
     .select()

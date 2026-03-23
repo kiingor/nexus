@@ -4,17 +4,24 @@ import { getOpenAIClient } from '@/lib/openai'
 const INSTRUCTION_SYSTEM_PROMPT = `Você é um assistente especializado em estruturar bases de conhecimento para agentes de IA.
 O usuário vai descrever um processo em linguagem natural.
 Retorne APENAS um objeto JSON válido, sem markdown, sem explicações, sem texto fora do JSON.
+
+REGRAS IMPORTANTES:
+- NÃO invente informações. Use APENAS o que o usuário descreveu.
+- O campo "orientacao" só deve ser preenchido se o usuário mencionou onde o elemento fica na tela. Se não mencionou, use null.
+- O campo "atalho" só deve ser preenchido se o usuário mencionou um atalho de teclado. Se não mencionou, use null.
+- Não adicione passos que o usuário não descreveu.
+
 A estrutura deve ser exatamente:
 {
   "title": "Título curto e descritivo do processo",
   "type": "instruction",
-  "keywords": ["Frases que o usuário diria ao buscar este processo, variações naturais da pergunta"],
+  "keywords": ["Frases que o usuário diria ao buscar este processo"],
   "steps": [
     {
       "passo": 1,
-      "acao": "Ação objetiva que o usuário deve realizar",
-      "orientacao": "Onde na tela encontrar o elemento (deixe null se não se aplicar)",
-      "atalho": "Atalho de teclado se houver (deixe null se não houver)"
+      "acao": "Ação descrita pelo usuário",
+      "orientacao": null,
+      "atalho": null
     }
   ]
 }
@@ -23,16 +30,22 @@ Gere entre 5 e 10 palavras-chave que representem formas naturais que um usuário
 const ERROR_SYSTEM_PROMPT = `Você é um assistente especializado em estruturar bases de conhecimento para agentes de IA.
 O usuário vai descrever um erro de sistema em linguagem natural.
 Retorne APENAS um objeto JSON válido, sem markdown, sem explicações, sem texto fora do JSON.
+
+REGRAS IMPORTANTES:
+- NÃO invente informações. Use APENAS o que o usuário descreveu.
+- O campo "orientation" só deve ser preenchido se o usuário mencionou onde o erro aparece na tela. Se não mencionou, use null.
+- O campo "error_code" só deve ser preenchido se o usuário mencionou um código de erro. Se não mencionou, use null.
+
 A estrutura deve ser exatamente:
 {
   "title": "Título curto e descritivo do erro",
   "type": "error",
-  "keywords": ["Frases que o usuário diria ao relatar este erro, variações naturais da pergunta"],
-  "error_code": "Código do erro se mencionado, senão null",
+  "keywords": ["Frases que o usuário diria ao relatar este erro"],
+  "error_code": null,
   "description": "O que o erro significa para o usuário",
   "cause": "Por que esse erro acontece",
   "solution": "Como resolver passo a passo, em texto corrido",
-  "orientation": "Onde o erro aparece na tela (null se não se aplicar)"
+  "orientation": null
 }
 Gere entre 5 e 10 palavras-chave que representem formas naturais que um usuário usaria para relatar esse erro.`
 

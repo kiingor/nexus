@@ -36,14 +36,14 @@ export function GlassModal({ open, onClose, title, children, className }: GlassM
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/80 backdrop-blur-md"
         onClick={onClose}
       />
 
       {/* Modal */}
       <div
         className={cn(
-          'relative w-full max-w-lg mx-4 glass p-6 animate-in fade-in zoom-in-95 duration-200',
+          'relative w-full max-w-lg mx-4 p-6 animate-in fade-in zoom-in-95 duration-200 bg-surface/95 backdrop-blur-xl border border-glass-border rounded-2xl',
           className
         )}
       >

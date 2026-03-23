@@ -70,14 +70,14 @@ export function Sidebar() {
       {/* Backdrop mobile */}
       {!collapsed && (
         <div
-          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          className="lg:hidden fixed inset-0 bg-black/70 z-40"
           onClick={() => setCollapsed(true)}
         />
       )}
 
       <aside
         className={cn(
-          'fixed top-0 left-0 h-full w-64 glass border-r border-glass-border z-40 flex flex-col transition-transform duration-300',
+          'fixed top-0 left-0 h-full w-64 bg-surface/95 backdrop-blur-xl border-r border-glass-border z-40 flex flex-col transition-transform duration-300 rounded-none',
           'lg:translate-x-0',
           collapsed ? '-translate-x-full' : 'translate-x-0'
         )}

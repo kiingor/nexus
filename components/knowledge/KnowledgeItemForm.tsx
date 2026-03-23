@@ -274,9 +274,9 @@ export function KnowledgeItemForm({ open, onClose, onSubmit, moduleType, item }:
 
         {moduleType === 'instruction' ? (
           /* INSTRUCTION: Two-column layout */
-          <div className="flex flex-1 h-[calc(100vh-10rem)]">
+          <div className="flex flex-1 h-[calc(100vh-14rem)] overflow-hidden">
             {/* Left column: Add step form */}
-            <div className="w-1/2 border-r border-glass-border p-6 flex flex-col">
+            <div className="w-1/2 border-r border-glass-border p-6 flex flex-col overflow-y-auto">
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-secondary mb-1">
                   {editingIndex !== null
@@ -342,7 +342,7 @@ export function KnowledgeItemForm({ open, onClose, onSubmit, moduleType, item }:
             </div>
 
             {/* Right column: Steps list */}
-            <div className="w-1/2 p-6 flex flex-col">
+            <div className="w-1/2 p-6 flex flex-col min-h-0">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-medium text-secondary">
                   Passos cadastrados

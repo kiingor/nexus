@@ -45,14 +45,14 @@ export async function GET(
   for (const item of items || []) {
     const mod = (item as Record<string, unknown> & { modules: { name: string; keywords: string[] } }).modules
     const moduleName = mod?.name || ''
-    const moduleKeywords = mod?.keywords || []
+    const allKeywords = [...(mod?.keywords || []), ...(item.keywords || [])]
 
     if (item.type === 'instruction') {
       const content = item.content as InstructionContent
       exportData.instrucoes.push({
         modulo: moduleName,
         titulo: item.title,
-        palavras_chave: moduleKeywords,
+        palavras_chave: allKeywords,
         passos: content.steps.map((s) => ({
           passo: s.passo,
           acao: s.acao,
@@ -65,7 +65,7 @@ export async function GET(
       exportData.erros.push({
         modulo: moduleName,
         titulo: item.title,
-        palavras_chave: moduleKeywords,
+        palavras_chave: allKeywords,
         codigo: content.error_code,
         descricao: content.description,
         causa: content.cause,

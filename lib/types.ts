@@ -25,6 +25,7 @@ export interface KnowledgeItem {
   title: string
   type: 'instruction' | 'error'
   content: InstructionContent | ErrorContent
+  keywords: string[]
   is_active: boolean
   created_at: string
   updated_at: string

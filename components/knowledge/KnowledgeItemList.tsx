@@ -48,7 +48,7 @@ export function KnowledgeItemList({ productSlug, moduleId }: KnowledgeItemListPr
     fetchData()
   }, [fetchData])
 
-  async function handleSave(data: { title: string; content: InstructionContent | ErrorContent }) {
+  async function handleSave(data: { title: string; content: InstructionContent | ErrorContent; keywords?: string[] }) {
     const res = await fetch(`/api/products/${productSlug}/knowledge`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -67,7 +67,7 @@ export function KnowledgeItemList({ productSlug, moduleId }: KnowledgeItemListPr
     }
   }
 
-  async function handleEdit(data: { title: string; content: InstructionContent | ErrorContent }) {
+  async function handleEdit(data: { title: string; content: InstructionContent | ErrorContent; keywords?: string[] }) {
     if (!editingItem) return
     const res = await fetch(`/api/products/${productSlug}/knowledge/${editingItem.id}`, {
       method: 'PUT',

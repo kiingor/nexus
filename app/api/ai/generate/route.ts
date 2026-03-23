@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getAnthropicClient } from '@/lib/anthropic'
+import { getOpenAIClient } from '@/lib/openai'
 
 const INSTRUCTION_SYSTEM_PROMPT = `Você é um assistente especializado em estruturar bases de conhecimento para agentes de IA.
 O usuário vai descrever um processo em linguagem natural.
@@ -43,22 +43,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const client = getAnthropicClient()
+    const openai = getOpenAIClient()
 
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4.1-mini',
       temperature: 0.3,
-      system: type === 'instruction' ? INSTRUCTION_SYSTEM_PROMPT : ERROR_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 2048,
+      messages: [
+        { role: 'system', content: type === 'instruction' ? INSTRUCTION_SYSTEM_PROMPT : ERROR_SYSTEM_PROMPT },
+        { role: 'user', content: prompt },
+      ],
     })
 
-    const textBlock = message.content.find((b) => b.type === 'text')
-    if (!textBlock || textBlock.type !== 'text') {
+    const text = response.choices[0]?.message?.content
+    if (!text) {
       return Response.json({ error: 'Sem resposta da IA' }, { status: 500 })
     }
 
-    const parsed = JSON.parse(textBlock.text)
+    const parsed = JSON.parse(text)
 
     return Response.json({
       title: parsed.title,

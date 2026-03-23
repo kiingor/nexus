@@ -15,11 +15,13 @@ interface KnowledgeItemFormProps {
   item?: KnowledgeItem | null
 }
 
-function cleanStep(step: InstructionStep) {
-  const clean: Record<string, unknown> = { passo: step.passo, acao: step.acao }
-  if (step.orientacao) clean.orientacao = step.orientacao
-  if (step.atalho) clean.atalho = step.atalho
-  return clean as InstructionStep
+function cleanStep(step: InstructionStep): InstructionStep {
+  return {
+    passo: step.passo,
+    acao: step.acao,
+    orientacao: step.orientacao || null,
+    atalho: step.atalho || null,
+  }
 }
 
 export function KnowledgeItemForm({ open, onClose, onSubmit, moduleType, item }: KnowledgeItemFormProps) {
@@ -153,15 +155,14 @@ export function KnowledgeItemForm({ open, onClose, onSubmit, moduleType, item }:
         if (steps.length === 0) return
         content = { type: 'instruction', steps: steps.map(cleanStep) }
       } else {
-        const err: Record<string, unknown> = {
+        content = {
           type: 'error',
+          error_code: errorCode || null,
           description,
           cause,
           solution,
+          orientation: orientation || null,
         }
-        if (errorCode) err.error_code = errorCode
-        if (orientation) err.orientation = orientation
-        content = err as ErrorContent
       }
 
       await onSubmit({ title, content })

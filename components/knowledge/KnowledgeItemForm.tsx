@@ -10,7 +10,7 @@ import type { KnowledgeItem, InstructionStep, InstructionContent, ErrorContent }
 interface KnowledgeItemFormProps {
   open: boolean
   onClose: () => void
-  onSubmit: (data: { title: string; content: InstructionContent | ErrorContent }) => Promise<void>
+  onSubmit: (data: { title: string; content: InstructionContent | ErrorContent; keywords: string[] }) => Promise<void>
   moduleType: 'instruction' | 'error'
   item?: KnowledgeItem | null
 }
@@ -26,6 +26,8 @@ function cleanStep(step: InstructionStep): InstructionStep {
 
 export function KnowledgeItemForm({ open, onClose, onSubmit, moduleType, item }: KnowledgeItemFormProps) {
   const [title, setTitle] = useState('')
+  const [keywords, setKeywords] = useState<string[]>([])
+  const [keywordInput, setKeywordInput] = useState('')
   const [loading, setLoading] = useState(false)
 
   // Instruction fields
@@ -49,6 +51,7 @@ export function KnowledgeItemForm({ open, onClose, onSubmit, moduleType, item }:
     if (!open) return
     if (item) {
       setTitle(item.title)
+      setKeywords(item.keywords || [])
       if (item.type === 'instruction') {
         const c = item.content as InstructionContent
         setSteps(c.steps.length > 0 ? [...c.steps] : [])
@@ -62,6 +65,7 @@ export function KnowledgeItemForm({ open, onClose, onSubmit, moduleType, item }:
       }
     } else {
       setTitle('')
+      setKeywords([])
       setSteps([])
       setErrorCode('')
       setDescription('')
@@ -165,7 +169,7 @@ export function KnowledgeItemForm({ open, onClose, onSubmit, moduleType, item }:
         }
       }
 
-      await onSubmit({ title, content })
+      await onSubmit({ title, content, keywords })
       onClose()
     } finally {
       setLoading(false)
@@ -213,6 +217,61 @@ export function KnowledgeItemForm({ open, onClose, onSubmit, moduleType, item }:
             onChange={(e) => setTitle(e.target.value)}
             required
           />
+
+          {/* Keywords */}
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-secondary mb-1.5">
+              Palavras-chave
+            </label>
+            <div className="flex gap-2">
+              <input
+                value={keywordInput}
+                onChange={(e) => setKeywordInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && keywordInput.trim()) {
+                    e.preventDefault()
+                    setKeywords([...keywords, keywordInput.trim()])
+                    setKeywordInput('')
+                  }
+                }}
+                placeholder="Digite e pressione Enter para adicionar"
+                className="flex-1 px-4 py-2 rounded-xl bg-glass border border-glass-border text-primary placeholder:text-muted text-sm focus:outline-none focus:border-orange-500/50 transition-all"
+              />
+              <GlassButton
+                type="button"
+                variant="glass"
+                size="sm"
+                disabled={!keywordInput.trim()}
+                onClick={() => {
+                  if (keywordInput.trim()) {
+                    setKeywords([...keywords, keywordInput.trim()])
+                    setKeywordInput('')
+                  }
+                }}
+              >
+                +
+              </GlassButton>
+            </div>
+            {keywords.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {keywords.map((kw, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-500/10 border border-orange-500/20 text-xs text-orange-400"
+                  >
+                    {kw}
+                    <button
+                      type="button"
+                      onClick={() => setKeywords(keywords.filter((_, j) => j !== i))}
+                      className="hover:text-red-400 transition-colors cursor-pointer"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {moduleType === 'instruction' ? (

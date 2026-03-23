@@ -24,6 +24,7 @@ export interface KnowledgeItem {
   title: string
   type: 'instruction' | 'error'
   content: InstructionContent | ErrorContent
+  keywords: string[]
   is_active: boolean
   created_at: string
   updated_at: string
@@ -75,6 +76,7 @@ export interface ExportData {
 export interface ExportInstruction {
   modulo: string
   titulo: string
+  palavras_chave: string[]
   passos: {
     passo: number
     acao: string
@@ -86,6 +88,7 @@ export interface ExportInstruction {
 export interface ExportError {
   modulo: string
   titulo: string
+  palavras_chave: string[]
   codigo: string | null
   descricao: string
   causa: string

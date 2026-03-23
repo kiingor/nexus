@@ -8,6 +8,7 @@ A estrutura deve ser exatamente:
 {
   "title": "Título curto e descritivo do processo",
   "type": "instruction",
+  "keywords": ["Frases que o usuário diria ao buscar este processo, variações naturais da pergunta"],
   "steps": [
     {
       "passo": 1,
@@ -16,7 +17,8 @@ A estrutura deve ser exatamente:
       "atalho": "Atalho de teclado se houver (deixe null se não houver)"
     }
   ]
-}`
+}
+Gere entre 5 e 10 palavras-chave que representem formas naturais que um usuário usaria para buscar esse processo.`
 
 const ERROR_SYSTEM_PROMPT = `Você é um assistente especializado em estruturar bases de conhecimento para agentes de IA.
 O usuário vai descrever um erro de sistema em linguagem natural.
@@ -25,12 +27,14 @@ A estrutura deve ser exatamente:
 {
   "title": "Título curto e descritivo do erro",
   "type": "error",
+  "keywords": ["Frases que o usuário diria ao relatar este erro, variações naturais da pergunta"],
   "error_code": "Código do erro se mencionado, senão null",
   "description": "O que o erro significa para o usuário",
   "cause": "Por que esse erro acontece",
   "solution": "Como resolver passo a passo, em texto corrido",
   "orientation": "Onde o erro aparece na tela (null se não se aplicar)"
-}`
+}
+Gere entre 5 e 10 palavras-chave que representem formas naturais que um usuário usaria para relatar esse erro.`
 
 export async function POST(request: NextRequest) {
   try {
@@ -64,6 +68,7 @@ export async function POST(request: NextRequest) {
 
     return Response.json({
       title: parsed.title,
+      keywords: parsed.keywords || [],
       content:
         type === 'instruction'
           ? { type: 'instruction', steps: parsed.steps }

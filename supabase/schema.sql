@@ -28,6 +28,7 @@ create table if not exists knowledge_items (
   title text not null,
   type text check (type in ('instruction', 'error')) not null,
   content jsonb not null,
+  keywords text[] default '{}',
   is_active boolean default true,
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now()

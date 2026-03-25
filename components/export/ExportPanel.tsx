@@ -8,11 +8,101 @@ import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import type { Product } from '@/lib/types'
 
+type ExportFormat = 'json' | 'markdown'
+
+interface ExportInstruction {
+  modulo: string
+  titulo: string
+  palavras_chave?: string[]
+  passos: {
+    passo: number
+    acao: string
+    orientacao?: string | null
+    atalho?: string | null
+  }[]
+}
+
+interface ExportError {
+  modulo: string
+  titulo: string
+  palavras_chave?: string[]
+  codigo?: string | null
+  descricao: string
+  causa: string
+  solucao: string
+  orientacao?: string | null
+}
+
 interface ExportResult {
   produto: string
   exportado_em: string
-  instrucoes: unknown[]
-  erros: unknown[]
+  instrucoes: ExportInstruction[]
+  erros: ExportError[]
+}
+
+function generateMarkdown(results: ExportResult[]): string {
+  const lines: string[] = []
+
+  for (const result of results) {
+    lines.push(`# ${result.produto}`)
+    lines.push('')
+
+    if (result.instrucoes.length > 0) {
+      for (const instr of result.instrucoes) {
+        lines.push(`## ${instr.titulo}`)
+        lines.push(`**Produto:** ${result.produto}`)
+        lines.push(`**Módulo:** ${instr.modulo}`)
+        if (instr.palavras_chave && instr.palavras_chave.length > 0) {
+          lines.push(`**Palavras-chave:** ${instr.palavras_chave.map(k => `"${k}"`).join(', ')}`)
+        }
+        lines.push('')
+
+        lines.push('### Passos')
+        for (const step of instr.passos) {
+          let line = `${step.passo}. **${step.acao}**`
+          if (step.orientacao) {
+            line += ` — ${step.orientacao}`
+          }
+          if (step.atalho) {
+            line += ` \`${step.atalho}\``
+          }
+          lines.push(line)
+        }
+        lines.push('')
+        lines.push('---')
+        lines.push('')
+      }
+    }
+
+    if (result.erros.length > 0) {
+      for (const err of result.erros) {
+        lines.push(`## ${err.titulo}`)
+        lines.push(`**Produto:** ${result.produto}`)
+        lines.push(`**Módulo:** ${err.modulo}`)
+        if (err.codigo) {
+          lines.push(`**Código:** ${err.codigo}`)
+        }
+        if (err.palavras_chave && err.palavras_chave.length > 0) {
+          lines.push(`**Palavras-chave:** ${err.palavras_chave.map(k => `"${k}"`).join(', ')}`)
+        }
+        lines.push('')
+        lines.push(`**Descrição:** ${err.descricao}`)
+        lines.push('')
+        lines.push(`**Causa:** ${err.causa}`)
+        lines.push('')
+        lines.push(`**Solução:** ${err.solucao}`)
+        if (err.orientacao) {
+          lines.push('')
+          lines.push(`**Orientação visual:** ${err.orientacao}`)
+        }
+        lines.push('')
+        lines.push('---')
+        lines.push('')
+      }
+    }
+  }
+
+  return lines.join('\n')
 }
 
 export function ExportPanel() {
@@ -22,7 +112,8 @@ export function ExportPanel() {
   const [exportData, setExportData] = useState<ExportResult[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadingProducts, setLoadingProducts] = useState(true)
-  const [jsonString, setJsonString] = useState('')
+  const [format, setFormat] = useState<ExportFormat>('json')
+  const [outputString, setOutputString] = useState('')
 
   useEffect(() => {
     fetch('/api/products')
@@ -50,34 +141,38 @@ export function ExportPanel() {
     }
   }
 
+  function buildOutput(results: ExportResult[], fmt: ExportFormat) {
+    if (fmt === 'markdown') {
+      return generateMarkdown(results)
+    }
+    if (results.length === 1) {
+      return JSON.stringify(results[0], null, 2)
+    }
+    const merged = {
+      exportado_em: new Date().toISOString(),
+      produtos: results.map((r) => ({
+        produto: r.produto,
+        instrucoes: r.instrucoes,
+        erros: r.erros,
+      })),
+    }
+    return JSON.stringify(merged, null, 2)
+  }
+
   async function handleExport() {
     if (selectedSlugs.size === 0) return
     setLoading(true)
     setExportData(null)
 
     try {
-      const results = await Promise.all(
+      const results: ExportResult[] = await Promise.all(
         Array.from(selectedSlugs).map((slug) =>
           fetch(`/api/products/${slug}/export`).then((r) => r.json())
         )
       )
 
       setExportData(results)
-
-      if (results.length === 1) {
-        setJsonString(JSON.stringify(results[0], null, 2))
-      } else {
-        // Merge all products into a single export
-        const merged = {
-          exportado_em: new Date().toISOString(),
-          produtos: results.map((r: ExportResult) => ({
-            produto: r.produto,
-            instrucoes: r.instrucoes,
-            erros: r.erros,
-          })),
-        }
-        setJsonString(JSON.stringify(merged, null, 2))
-      }
+      setOutputString(buildOutput(results, format))
     } catch {
       toast('Erro ao exportar', 'error')
     } finally {
@@ -85,25 +180,38 @@ export function ExportPanel() {
     }
   }
 
+  // Update output when format changes (if data already loaded)
+  function switchFormat(fmt: ExportFormat) {
+    setFormat(fmt)
+    if (exportData) {
+      setOutputString(buildOutput(exportData, fmt))
+    }
+  }
+
   function handleDownload() {
-    if (!jsonString) return
-    const blob = new Blob([jsonString], { type: 'application/json' })
+    if (!outputString) return
+    const isJson = format === 'json'
+    const blob = new Blob([outputString], {
+      type: isJson ? 'application/json' : 'text/markdown',
+    })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    const name = selectedSlugs.size === 1
-      ? `${Array.from(selectedSlugs)[0]}-knowledge.json`
-      : 'nexus-knowledge-export.json'
+    const ext = isJson ? 'json' : 'md'
+    const name =
+      selectedSlugs.size === 1
+        ? `${Array.from(selectedSlugs)[0]}-knowledge.${ext}`
+        : `nexus-knowledge-export.${ext}`
     a.download = name
     a.click()
     URL.revokeObjectURL(url)
-    toast('JSON baixado com sucesso!')
+    toast(`Arquivo .${ext} baixado com sucesso!`)
   }
 
   function handleCopy() {
-    if (!jsonString) return
-    navigator.clipboard.writeText(jsonString).then(() => {
-      toast('JSON copiado para clipboard!')
+    if (!outputString) return
+    navigator.clipboard.writeText(outputString).then(() => {
+      toast('Conteúdo copiado para clipboard!')
     })
   }
 
@@ -146,7 +254,6 @@ export function ExportPanel() {
                     selected && 'glow-orange bg-orange-500/5'
                   )}
                 >
-                  {/* Checkbox */}
                   <div
                     className={cn(
                       'w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-all',
@@ -174,6 +281,37 @@ export function ExportPanel() {
           </div>
         )}
       </div>
+
+      {/* Format selection */}
+      {selectedSlugs.size > 0 && (
+        <div>
+          <label className="text-sm font-medium text-secondary mb-2 block">Formato</label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => switchFormat('json')}
+              className={cn(
+                'px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer',
+                format === 'json'
+                  ? 'bg-orange-500 text-white'
+                  : 'glass text-secondary hover:text-primary'
+              )}
+            >
+              JSON
+            </button>
+            <button
+              onClick={() => switchFormat('markdown')}
+              className={cn(
+                'px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer',
+                format === 'markdown'
+                  ? 'bg-orange-500 text-white'
+                  : 'glass text-secondary hover:text-primary'
+              )}
+            >
+              Markdown
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Export button */}
       {selectedSlugs.size > 0 && !exportData && (
@@ -215,36 +353,36 @@ export function ExportPanel() {
           </div>
 
           {/* Actions */}
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <GlassButton onClick={handleDownload}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M8 2v8M5 7l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 <path d="M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
-              Baixar JSON
+              Baixar {format === 'json' ? 'JSON' : 'Markdown'}
             </GlassButton>
             <GlassButton variant="glass" onClick={handleCopy}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
                 <path d="M3 11V3.5A1.5 1.5 0 014.5 2H11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
-              Copiar JSON
+              Copiar {format === 'json' ? 'JSON' : 'Markdown'}
             </GlassButton>
             <GlassButton
               variant="ghost"
               onClick={() => {
                 setExportData(null)
-                setJsonString('')
+                setOutputString('')
               }}
             >
               Nova exportação
             </GlassButton>
           </div>
 
-          {/* JSON Preview */}
+          {/* Preview */}
           <div className="glass p-1">
-            <pre className="bg-surface rounded-xl p-4 text-xs font-mono text-secondary overflow-auto max-h-[50vh] leading-relaxed">
-              {jsonString}
+            <pre className="bg-surface rounded-xl p-4 text-xs font-mono text-secondary overflow-auto max-h-[50vh] leading-relaxed whitespace-pre-wrap">
+              {outputString}
             </pre>
           </div>
         </>

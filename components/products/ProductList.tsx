@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { ProductCard } from './ProductCard'
 import { ProductForm } from './ProductForm'
 import { GlassButton } from '@/components/ui/GlassButton'
@@ -22,6 +22,17 @@ export function ProductList({ showCreateButton = true }: ProductListProps) {
   const [editingProduct, setEditingProduct] = useState<ProductWithCounts | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ProductWithCounts | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [search, setSearch] = useState('')
+
+  const filteredProducts = useMemo(() => {
+    const q = search.toLowerCase().trim()
+    if (!q) return products
+    return products.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.slug.toLowerCase().includes(q) ||
+      p.description?.toLowerCase().includes(q)
+    )
+  }, [products, search])
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -111,6 +122,34 @@ export function ProductList({ showCreateButton = true }: ProductListProps) {
         </div>
       )}
 
+      {products.length > 0 && (
+        <div className="relative mb-6">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4A4A48] pointer-events-none">
+            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+          </svg>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar produto por nome, slug ou descrição..."
+            className="w-full h-10 pl-10 pr-9 rounded-xl text-sm text-[#F5F5F0] bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] placeholder:text-[#4A4A48] outline-none transition-all duration-200 focus:border-[rgba(255,107,0,0.5)] focus:bg-[rgba(255,255,255,0.06)] focus:shadow-[0_0_0_3px_rgba(255,107,0,0.12)] hover:border-[rgba(255,255,255,0.14)]"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4A4A48] hover:text-[#8A8A85] transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+            </button>
+          )}
+          {search && (
+            <p className="text-xs text-[#4A4A48] mt-2">
+              {filteredProducts.length === 0 ? 'Nenhum produto encontrado' : `${filteredProducts.length} resultado${filteredProducts.length > 1 ? 's' : ''}`}
+            </p>
+          )}
+        </div>
+      )}
+
       {products.length === 0 ? (
         <EmptyState
           title="Nenhum produto cadastrado"
@@ -127,7 +166,7 @@ export function ProductList({ showCreateButton = true }: ProductListProps) {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {products.map((product) => (
+          {filteredProducts.map((product) => (
             <ProductCard
               key={product.id}
               product={product}

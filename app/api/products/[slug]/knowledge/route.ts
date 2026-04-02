@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { syncItemEmbeddings } from '@/lib/embeddings'
 
 export async function GET(
   request: NextRequest,
@@ -79,6 +80,9 @@ export async function POST(
   if (error) {
     return Response.json({ error: error.message }, { status: 500 })
   }
+
+  // Gerar embeddings em background (não bloqueia a resposta)
+  syncItemEmbeddings(data.id).catch(console.error)
 
   return Response.json(data, { status: 201 })
 }

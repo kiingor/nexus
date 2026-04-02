@@ -55,6 +55,18 @@ export async function DELETE(
   const { moduleId } = await params
   const supabase = createServerClient()
 
+  // Delete embeddings for all items in this module
+  const { data: items } = await supabase
+    .from('knowledge_items')
+    .select('id')
+    .eq('module_id', moduleId)
+  if (items?.length) {
+    await supabase
+      .from('knowledge_embeddings')
+      .delete()
+      .in('item_id', items.map(i => i.id))
+  }
+
   // Delete all knowledge items in this module
   await supabase.from('knowledge_items').delete().eq('module_id', moduleId)
 

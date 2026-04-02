@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { syncItemEmbeddings, deleteItemEmbeddings } from '@/lib/embeddings'
 
 export async function GET(
   request: NextRequest,
@@ -47,6 +48,9 @@ export async function PUT(
     return Response.json({ error: error.message }, { status: 500 })
   }
 
+  // Regerar embeddings com conteúdo atualizado
+  syncItemEmbeddings(itemId).catch(console.error)
+
   return Response.json(data)
 }
 
@@ -56,6 +60,9 @@ export async function DELETE(
 ) {
   const { itemId } = await params
   const supabase = createServerClient()
+
+  // Apagar embeddings primeiro (antes de apagar o item)
+  await deleteItemEmbeddings(itemId)
 
   const { error } = await supabase
     .from('knowledge_items')

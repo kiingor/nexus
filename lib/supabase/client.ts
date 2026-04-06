@@ -1,4 +1,5 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
+import { SupabaseClient } from '@supabase/supabase-js'
 
 let client: SupabaseClient | null = null
 
@@ -8,14 +9,13 @@ export function getSupabaseClient(): SupabaseClient {
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      // Return a dummy client that won't crash during build
-      // but will fail gracefully at runtime
+      const { createClient } = require('@supabase/supabase-js')
       client = createClient('https://placeholder.supabase.co', 'placeholder-key')
     } else {
-      client = createClient(supabaseUrl, supabaseAnonKey)
+      client = createBrowserClient(supabaseUrl, supabaseAnonKey)
     }
   }
-  return client
+  return client as SupabaseClient
 }
 
 // For backward compatibility

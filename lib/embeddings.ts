@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import { createClient } from '@supabase/supabase-js'
 
 // ---------------------------------------------------------------------------
@@ -38,12 +39,20 @@ interface Chunk {
 // Clients (lazy init)
 // ---------------------------------------------------------------------------
 let openai: OpenAI | null = null
+let gemini: GoogleGenerativeAI | null = null
 
 function getOpenAI(): OpenAI {
   if (!openai) {
     openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   }
   return openai
+}
+
+function getGemini(): GoogleGenerativeAI | null {
+  if (!gemini && process.env.GEMINI_API_KEY) {
+    gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+  }
+  return gemini
 }
 
 function getSupabase() {
@@ -118,14 +127,25 @@ function buildChunks(
 }
 
 // ---------------------------------------------------------------------------
-// Generate embedding via OpenAI
+// Generate embeddings
 // ---------------------------------------------------------------------------
-async function getEmbedding(text: string): Promise<number[]> {
+async function getOpenAIEmbedding(text: string): Promise<number[]> {
   const res = await getOpenAI().embeddings.create({
     model: 'text-embedding-3-small',
     input: text,
   })
   return res.data[0].embedding
+}
+
+async function getGeminiEmbedding(text: string): Promise<number[] | null> {
+  const client = getGemini()
+  if (!client) return null
+  const model = client.getGenerativeModel({ model: 'gemini-embedding-001' })
+  const result = await model.embedContent({
+    content: { role: 'user', parts: [{ text }] },
+    outputDimensionality: 768,
+  } as Parameters<typeof model.embedContent>[0])
+  return result.embedding.values
 }
 
 // ---------------------------------------------------------------------------
@@ -165,15 +185,24 @@ export async function syncItemEmbeddings(itemId: string): Promise<void> {
 
   for (const chunk of chunks) {
     try {
-      const embedding = await getEmbedding(chunk.chunk_text)
+      const [embeddingOpenai, embeddingGemini] = await Promise.all([
+        getOpenAIEmbedding(chunk.chunk_text),
+        getGeminiEmbedding(chunk.chunk_text),
+      ])
 
-      await supabase.from('knowledge_embeddings').insert({
+      const row: Record<string, unknown> = {
         item_id: chunk.item_id,
         chunk_type: chunk.chunk_type,
         step_number: chunk.step_number,
         chunk_text: chunk.chunk_text,
-        embedding_openai: JSON.stringify(embedding),
-      })
+        embedding_openai: JSON.stringify(embeddingOpenai),
+      }
+
+      if (embeddingGemini) {
+        row.embedding_gemini = JSON.stringify(embeddingGemini)
+      }
+
+      await supabase.from('knowledge_embeddings').insert(row)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       console.error(`[embeddings] Error generating embedding for "${chunk.chunk_type}":`, message)

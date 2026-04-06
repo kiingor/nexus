@@ -196,8 +196,11 @@ async function getOpenAIEmbedding(text: string): Promise<number[]> {
 }
 
 async function getGeminiEmbedding(text: string): Promise<number[]> {
-  const model = genai!.getGenerativeModel({ model: 'embedding-001' })
-  const result = await model.embedContent(text)
+  const model = genai!.getGenerativeModel({ model: 'gemini-embedding-001' })
+  const result = await model.embedContent({
+    content: { role: 'user', parts: [{ text }] },
+    outputDimensionality: 768,
+  } as Parameters<typeof model.embedContent>[0])
   return result.embedding.values
 }
 

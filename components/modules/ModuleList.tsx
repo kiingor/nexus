@@ -8,7 +8,8 @@ import { GlassModal } from '@/components/ui/GlassModal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui/Toast'
-import type { ModuleWithCount, Product } from '@/lib/types'
+import { cn } from '@/lib/utils'
+import type { ModuleWithCount, Product, KnowledgeItem } from '@/lib/types'
 
 interface ModuleListProps {
   productSlug: string
@@ -23,6 +24,23 @@ export function ModuleList({ productSlug }: ModuleListProps) {
   const [editingModule, setEditingModule] = useState<ModuleWithCount | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ModuleWithCount | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Selection for copy/paste
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [copying, setCopying] = useState(false)
+
+  // Clipboard (paste source)
+  const [clipboardData, setClipboardData] = useState<{
+    sourceProductSlug: string
+    modules: Array<{
+      name: string
+      type: 'instruction' | 'error'
+      description: string | null
+      keywords: string[]
+      knowledgeItems: KnowledgeItem[]
+    }>
+  } | null>(null)
+  const [pasting, setPasting] = useState(false)
 
   // Filters
   const [search, setSearch] = useState('')
@@ -64,6 +82,94 @@ export function ModuleList({ productSlug }: ModuleListProps) {
   function toggleSort(field: typeof sortField) {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortField(field); setSortDir(field === 'name' ? 'asc' : 'desc') }
+  }
+
+  // Selection helpers
+  function toggleModule(id: string) {
+    const next = new Set(selectedIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSelectedIds(next)
+  }
+
+  function toggleAllModules() {
+    if (selectedIds.size === filteredModules.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredModules.map(m => m.id)))
+    }
+  }
+
+  // Load clipboard on mount
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('nexus-copied-modules')
+      if (raw) setClipboardData(JSON.parse(raw))
+    } catch { /* ignore parse errors */ }
+  }, [])
+
+  async function handleCopy() {
+    if (selectedIds.size === 0) return
+    setCopying(true)
+    try {
+      const selectedModules = modules.filter(m => selectedIds.has(m.id))
+      const modulesData = await Promise.all(
+        selectedModules.map(async (mod) => {
+          const itemsRes = await fetch(`/api/products/${productSlug}/knowledge?moduleId=${mod.id}`)
+          const items = itemsRes.ok ? await itemsRes.json() : []
+          return {
+            name: mod.name,
+            type: mod.type,
+            description: mod.description,
+            keywords: mod.keywords || [],
+            knowledgeItems: items,
+          }
+        })
+      )
+      const clipboardPayload = {
+        sourceProductSlug: productSlug,
+        modules: modulesData,
+      }
+      sessionStorage.setItem('nexus-copied-modules', JSON.stringify(clipboardPayload))
+      setClipboardData(clipboardPayload)
+      toast(`${selectedIds.size} módulo${selectedIds.size > 1 ? 's' : ''} copiado${selectedIds.size > 1 ? 's' : ''}!`)
+      setSelectedIds(new Set())
+    } catch {
+      toast('Erro ao copiar módulos', 'error')
+    } finally {
+      setCopying(false)
+    }
+  }
+
+  async function handlePaste() {
+    if (!clipboardData) return
+    setPasting(true)
+    try {
+      const res = await fetch(`/api/products/${productSlug}/modules/paste`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modules: clipboardData.modules }),
+      })
+      if (res.ok) {
+        const result = await res.json()
+        toast(`${result.created} módulo${result.created > 1 ? 's' : ''} colado${result.created > 1 ? 's' : ''}!`)
+        sessionStorage.removeItem('nexus-copied-modules')
+        setClipboardData(null)
+        fetchData()
+      } else {
+        toast('Erro ao colar módulos', 'error')
+      }
+    } catch {
+      toast('Erro ao colar módulos', 'error')
+    } finally {
+      setPasting(false)
+    }
+  }
+
+  function clearClipboard() {
+    sessionStorage.removeItem('nexus-copied-modules')
+    setClipboardData(null)
+    toast('Clipboard limpa', 'info')
   }
 
   const fetchData = useCallback(async () => {
@@ -164,9 +270,68 @@ export function ModuleList({ productSlug }: ModuleListProps) {
         </GlassButton>
       </div>
 
+      {/* Paste bar */}
+      {clipboardData && (
+        <div className="mb-6 glass p-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-primary">
+              {clipboardData.modules.length} módulo{clipboardData.modules.length > 1 ? 's' : ''} copiado{clipboardData.modules.length > 1 ? 's' : ''} de <span className="text-orange-400">{clipboardData.sourceProductSlug}</span>
+            </p>
+            <p className="text-xs text-muted mt-0.5">
+              {clipboardData.modules.map(m => m.name).join(', ')}
+            </p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <GlassButton onClick={handlePaste} disabled={pasting}>
+              {pasting ? (
+                <>
+                  <Spinner size="sm" />
+                  Colando...
+                </>
+              ) : (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M5 3.5A1.5 1.5 0 016.5 2h3A1.5 1.5 0 0111 3.5V5h2a1 1 0 011 1v8a1 1 0 01-1 1H3a1 1 0 01-1-1V6a1 1 0 011-1h2V3.5z" stroke="currentColor" strokeWidth="1.2" />
+                  </svg>
+                  Colar {clipboardData.modules.length} módulo{clipboardData.modules.length > 1 ? 's' : ''}
+                </>
+              )}
+            </GlassButton>
+            <GlassButton variant="ghost" size="sm" onClick={clearClipboard}>
+              Limpar
+            </GlassButton>
+          </div>
+        </div>
+      )}
+
+      {/* Copy toolbar (when modules selected) */}
+      {selectedIds.size > 0 && (
+        <div className="mb-6 glass p-3 flex items-center justify-between">
+          <p className="text-sm text-primary">
+            {selectedIds.size} módulo{selectedIds.size > 1 ? 's' : ''} selecionado{selectedIds.size > 1 ? 's' : ''}
+          </p>
+          <GlassButton onClick={handleCopy} disabled={copying}>
+            {copying ? (
+              <>
+                <Spinner size="sm" />
+                Copiando...
+              </>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M3 11V3.5A1.5 1.5 0 014.5 2H11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+                Copiar
+              </>
+            )}
+          </GlassButton>
+        </div>
+      )}
+
       {modules.length > 0 && (
         <div className="mb-6 space-y-3">
-          {/* Search + Sort */}
+          {/* Search + Sort + Selection */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4A4A48] pointer-events-none">
@@ -186,6 +351,26 @@ export function ModuleList({ productSlug }: ModuleListProps) {
               )}
             </div>
             <div className="flex items-center gap-1.5">
+              {selectedIds.size < filteredModules.length && filteredModules.length > 0 && (
+                <button
+                  onClick={toggleAllModules}
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-medium transition-all duration-200 cursor-pointer bg-[rgba(255,107,0,0.12)] text-[#FF8533] border border-[rgba(255,107,0,0.25)]"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <rect x="3" y="3" width="18" height="18" rx="3" />
+                    <path d="m5 12 5 5 9-9" />
+                  </svg>
+                  Todos
+                </button>
+              )}
+              {selectedIds.size > 0 && (
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-medium transition-all duration-200 cursor-pointer bg-[rgba(255,255,255,0.04)] text-[#8A8A85] border border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.14)] hover:text-[#F5F5F0]"
+                >
+                  Nenhum
+                </button>
+              )}
               {([['name', 'Nome'], ['created_at', 'Criação'], ['item_count', 'Itens']] as const).map(([field, label]) => {
                 const active = sortField === field
                 return (
@@ -274,6 +459,9 @@ export function ModuleList({ productSlug }: ModuleListProps) {
                   setFormOpen(true)
                 }}
                 onDelete={setDeleteTarget}
+                selectable
+                selected={selectedIds.has(mod.id)}
+                onToggleSelect={() => toggleModule(mod.id)}
               />
             ))}
           </div>

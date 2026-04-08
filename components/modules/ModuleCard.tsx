@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { GlassBadge } from '@/components/ui/GlassBadge'
 import { GlassButton } from '@/components/ui/GlassButton'
+import { cn } from '@/lib/utils'
 import type { ModuleWithCount } from '@/lib/types'
 
 interface ModuleCardProps {
@@ -11,12 +12,36 @@ interface ModuleCardProps {
   productSlug: string
   onEdit: (mod: ModuleWithCount) => void
   onDelete: (mod: ModuleWithCount) => void
+  selectable?: boolean
+  selected?: boolean
+  onToggleSelect?: () => void
 }
 
-export function ModuleCard({ module, productSlug, onEdit, onDelete }: ModuleCardProps) {
+export function ModuleCard({ module, productSlug, onEdit, onDelete, selectable, selected, onToggleSelect }: ModuleCardProps) {
   return (
-    <GlassCard hover className="p-5 flex flex-col gap-3">
-      <div className="flex items-start justify-between">
+    <GlassCard hover className={cn('relative p-5 flex flex-col gap-3', selected && 'glow-orange bg-orange-500/5')}>
+      {selectable && (
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleSelect?.() }}
+          className="absolute top-3 left-3 cursor-pointer"
+        >
+          <div
+            className={cn(
+              'w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all',
+              selected
+                ? 'bg-orange-500 border-orange-500'
+                : 'border-glass-border hover:border-orange-500/50'
+            )}
+          >
+            {selected && (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2.5 6l2.5 2.5 4.5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+        </button>
+      )}
+      <div className={cn('flex items-start justify-between', selectable && 'pl-7')}>
         <div className="flex-1">
           <h3 className="text-base font-display font-semibold text-primary mb-1">
             {module.name}

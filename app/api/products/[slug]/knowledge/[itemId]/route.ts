@@ -36,6 +36,7 @@ export async function PUT(
   if (body.content !== undefined) updateData.content = body.content
   if (body.keywords !== undefined) updateData.keywords = body.keywords
   if (body.is_active !== undefined) updateData.is_active = body.is_active
+  if (body.module_id !== undefined) updateData.module_id = body.module_id
 
   const { data, error } = await supabase
     .from('knowledge_items')

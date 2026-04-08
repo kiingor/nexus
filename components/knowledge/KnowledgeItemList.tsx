@@ -197,12 +197,15 @@ export function KnowledgeItemList({ productSlug, moduleId }: KnowledgeItemListPr
             <KnowledgeItemCard
               key={item.id}
               item={item}
+              productSlug={productSlug}
+              currentModuleName={module?.name || ''}
               onEdit={(i) => {
                 setEditingItem(i)
                 setManualFormOpen(true)
               }}
               onDelete={setDeleteTarget}
               onToggleActive={handleToggleActive}
+              onModuleChange={fetchData}
             />
           ))}
         </div>

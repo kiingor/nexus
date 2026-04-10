@@ -7,7 +7,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { cn } from '@/lib/utils'
 import type { ChatMessage as ChatMessageType } from '@/lib/types'
 
-const MODELS = [
+const BASE_MODELS = [
   { id: 'gpt-4.1-mini', label: '4.1 Mini' },
   { id: 'gpt-4.1-nano', label: '4.1 Nano' },
   { id: 'gpt-4o-mini', label: '4o Mini' },
@@ -18,11 +18,17 @@ const MODELS = [
   { id: 'o4-mini', label: 'o4 Mini' },
 ]
 
+const FINETUNED_MODEL_ID = process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL
+
+const MODELS = FINETUNED_MODEL_ID
+  ? [{ id: FINETUNED_MODEL_ID, label: 'Nexus AI' }, ...BASE_MODELS]
+  : BASE_MODELS
+
 export function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessageType[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [model, setModel] = useState('gpt-4.1-mini')
+  const [model, setModel] = useState(FINETUNED_MODEL_ID || 'gpt-4.1-mini')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

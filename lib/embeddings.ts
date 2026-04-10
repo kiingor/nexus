@@ -149,6 +149,18 @@ async function getGeminiEmbedding(text: string): Promise<number[] | null> {
 }
 
 // ---------------------------------------------------------------------------
+// Query embedding (for RAG search)
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate an embedding for a search query.
+ * Used by the chat endpoint to perform vector similarity search.
+ */
+export async function generateQueryEmbedding(text: string): Promise<number[]> {
+  return getOpenAIEmbedding(text)
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 

@@ -11,14 +11,21 @@ export function getOpenAIClient(): OpenAI {
   return client
 }
 
-export const OPENAI_MODELS = [
+export const OPENAI_MODELS: Array<{ id: string; label: string; provider: string }> = [
   { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', provider: 'openai' },
   { id: 'gpt-4.1-nano', label: 'GPT-4.1 Nano', provider: 'openai' },
   { id: 'gpt-4o-mini', label: 'GPT-4o Mini', provider: 'openai' },
   { id: 'gpt-4o', label: 'GPT-4o', provider: 'openai' },
   { id: 'gpt-4.1', label: 'GPT-4.1', provider: 'openai' },
-] as const
+]
 
-export const ALL_CHAT_MODELS = [
-  ...OPENAI_MODELS,
-] as const
+// Add fine-tuned model if configured
+if (process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL) {
+  OPENAI_MODELS.unshift({
+    id: process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL,
+    label: 'Nexus AI',
+    provider: 'openai',
+  })
+}
+
+export const ALL_CHAT_MODELS = [...OPENAI_MODELS]

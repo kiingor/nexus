@@ -213,10 +213,11 @@ ${knowledgeContext}`
     }
 
     return Response.json({ response: responseText, model: selectedModel, rag: usedRAG })
-  } catch (error) {
-    console.error('AI chat error:', error)
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error)
+    console.error('AI chat error:', errMsg)
     return Response.json(
-      { error: 'Erro ao processar mensagem. Verifique a API key.' },
+      { error: `Erro ao processar mensagem: ${errMsg}` },
       { status: 500 }
     )
   }

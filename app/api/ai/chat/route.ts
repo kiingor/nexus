@@ -82,11 +82,12 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'API key inválida.' }, { status: 401 })
     }
 
-    const { message, productSlug, model, history } = await request.json() as {
+    const { message, productSlug, model, history, systemPrompt: customSystemPrompt } = await request.json() as {
       message: string
       productSlug?: string
       model?: string
       history?: ChatMessage[]
+      systemPrompt?: string
     }
 
     if (!message) {
@@ -187,6 +188,11 @@ Use formatação simples (sem markdown complexo).
 
 BASE DE CONHECIMENTO:
 ${knowledgeContext}`
+    }
+
+    // Append custom instructions from caller
+    if (customSystemPrompt) {
+      systemPrompt += `\n\nINSTRUÇÕES ADICIONAIS:\n${customSystemPrompt}`
     }
 
     // --- Call OpenAI ---

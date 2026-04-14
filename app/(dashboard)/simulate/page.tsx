@@ -906,7 +906,7 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
                       plugins: { legend: { display: false } },
                       scales: {
                         x: { ticks: { color: '#8A8A85', font: { size: 9 }, maxRotation: 50 }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                        y: { min: 0, max: 100, ticks: { callback: (v: number) => v + '%', color: '#8A8A85', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        y: { min: 0, max: 100, ticks: { callback: (v: string | number) => v + '%', color: '#8A8A85', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
                       },
                     }} />
                   </div>

@@ -1,7 +1,21 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(xargs wc:*)",
+      "Bash(npx -p typescript tsc --noEmit)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx -p tsx tsx -e ':*)",
+      "Bash(npx tsx -e ':*)",
+      "Bash(taskkill /PID 28232 /F)",
+      "Bash(taskkill:*)",
+      "Bash(kill 28232)",
+      "Bash(curl:*)",
+      "Bash(awk '{print $2}')",
+      "Bash(xargs kill:*)",
+      "Bash(rm -rf .next)",
+      "Bash(supabase status:*)"
     ]
   }
 }

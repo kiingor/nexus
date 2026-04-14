@@ -46,9 +46,10 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
 const args = process.argv.slice(2)
 const epochsArg = args.find((a) => a.startsWith('--epochs='))?.split('=')[1]
 const suffixArg = args.find((a) => a.startsWith('--suffix='))?.split('=')[1] || 'nexus'
+const fileArg = args.find((a) => a.startsWith('--file='))?.split('=')[1]
 
 const BASE_MODEL = 'gpt-4o-mini-2024-07-18'
-const TRAINING_FILE = path.resolve(process.cwd(), 'data/training.jsonl')
+const TRAINING_FILE = path.resolve(process.cwd(), fileArg || 'data/training.jsonl')
 
 // ---------------------------------------------------------------------------
 // 3. Main
@@ -69,6 +70,7 @@ async function main() {
   console.log(`Modelo base: ${BASE_MODEL}`)
   console.log(`Suffix: ${suffixArg}`)
   if (epochsArg) console.log(`Epochs: ${epochsArg}`)
+  if (fileArg) console.log(`Custom file: ${fileArg}`)
   console.log('')
 
   if (lines.length < 10) {

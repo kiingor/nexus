@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexus · Simulador IA</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0e0e0e;color:#f0f0f0;font-family:'Inter',sans-serif;font-size:14px;min-height:100vh;display:flex}
+:root{--bg:#0e0e0e;--s1:#1a1a1a;--s2:#222;--s3:#2a2a2a;--border:#2e2e2e;--border2:#3a3a3a;--text:#f0f0f0;--muted:#a0a0a0;--dim:#666;--orange:#f26522;--odim:rgba(242,101,34,.12);--oborder:rgba(242,101,34,.3);--green:#22c55e;--gdim:rgba(34,197,94,.1);--amber:#f59e0b;--adim:rgba(245,158,11,.1);--red:#ef4444;--rdim:rgba(239,68,68,.1);--blue:#3b82f6;--bdim:rgba(59,130,246,.1);--purple:#a78bfa;--pdim:rgba(167,139,250,.1);--pborder:rgba(167,139,250,.25);--r:8px;--rl:12px;--sidebar:220px}
+/* SIDEBAR */
+.sidebar{width:var(--sidebar);background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100}
+.logo{padding:22px 20px 18px;border-bottom:1px solid var(--border);font-size:21px;font-weight:700;letter-spacing:-.5px}
+.logo span{color:var(--orange)}
+.nav{flex:1;padding:14px 10px;display:flex;flex-direction:column;gap:2px}
+.ni{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);background:none;border:none;width:100%;text-align:left;transition:all .15s}
+.ni:hover{background:var(--s2);color:var(--text)}
+.ni.active{background:var(--odim);color:var(--orange);border:1px solid var(--oborder)}
+.ni svg{width:17px;height:17px;flex-shrink:0;opacity:.7;pointer-events:none}.ni span{pointer-events:none}
+.ni.active svg{opacity:1}
+.ua{padding:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.av{width:30px;height:30px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0}
+.un{font-size:12px;font-weight:600}
+.ur{font-size:11px;color:var(--dim)}
+/* MAIN */
+.main{margin-left:var(--sidebar);flex:1;display:flex;flex-direction:column;min-height:100vh;overflow:hidden}
+.topbar{padding:24px 32px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-shrink:0}
+.pt{font-size:26px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
+.ps{font-size:13px;color:var(--muted)}
+.ta{display:flex;gap:10px;align-items:center;padding-top:4px}
+.content{padding:20px 32px 32px;flex:1;overflow-y:auto}
+/* PANELS */
+.panel{display:none;flex-direction:column;gap:16px}
+.panel.active{display:flex}
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r);font-family:'Inter',sans-serif;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;transition:all .15s;white-space:nowrap}
+.btn-o{background:var(--orange);color:#fff;border-color:var(--orange)}
+.btn-o:hover{background:#e05a1a}
+.btn-o:disabled{background:#5a3010;border-color:#5a3010;color:#906040;cursor:not-allowed}
+.btn-g{background:transparent;color:var(--muted);border-color:var(--border2)}
+.btn-g:hover{background:var(--s2);color:var(--text)}
+.btn-r{background:rgba(239,68,68,.1);color:var(--red);border-color:rgba(239,68,68,.25)}
+.btn-r:hover{background:rgba(239,68,68,.18)}
+.btn-p{background:var(--pdim);color:var(--purple);border-color:var(--pborder)}
+.btn-p:hover{background:rgba(167,139,250,.2)}
+.btn-p:disabled{opacity:.4;cursor:not-allowed}
+.sp{font-size:11px;font-weight:500;padding:4px 11px;background:var(--s2);color:var(--muted);border:1px solid var(--border2);border-radius:20px}
+.sp.run{border-color:var(--oborder);color:var(--orange);background:var(--odim)}
+.sp.done{border-color:rgba(34,197,94,.3);color:var(--green);background:var(--gdim)}
+/* CARDS */
+.card{background:var(--s1);border:1px solid var(--border);border-radius:var(--rl);padding:18px 22px}
+.ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.ct{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.ci{width:26px;height:26px;border-radius:6px;background:var(--odim);border:1px solid var(--oborder);display:flex;align-items:center;justify-content:center;font-size:13px}
+.cs{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-top:2px}
+/* FORM */
+.fl{font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;display:block}
+.inp{width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:var(--r);padding:9px 13px;font-family:'Inter',sans-serif;font-size:13px;color:var(--text);outline:none;transition:border-color .15s}
+.inp:focus{border-color:var(--orange)}
+.inp::placeholder{color:var(--dim)}
+.ta-inp{width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:var(--r);padding:10px 13px;font-family:'Inter',sans-serif;font-size:12px;color:var(--text);outline:none;resize:vertical;line-height:1.6;min-height:100px;transition:border-color .15s}
+.ta-inp:focus{border-color:var(--orange)}
+.ta-inp::placeholder{color:var(--dim)}
+.ir{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.sw-r{display:flex;align-items:center;gap:10px}
+.sw-r input[type=range]{flex:1;-webkit-appearance:none;height:4px;background:var(--border2);border-radius:2px;outline:none}
+.sw-r input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--orange);cursor:pointer}
+.sv{font-size:13px;font-weight:600;min-width:32px;text-align:right;color:var(--orange);font-variant-numeric:tabular-nums}
+.sh{font-size:11px;color:var(--dim);margin-top:5px}
+/* HOWTO */
+.hw{background:var(--bdim);border:1px solid rgba(59,130,246,.2);border-radius:var(--r);padding:12px 15px;font-size:12px;color:#93c5fd;line-height:1.75;margin-bottom:14px}
+.hw b{color:#bfdbfe}
+.hw a{color:var(--orange);text-decoration:none}
+/* TOGGLE */
+.tg-w{display:flex;align-items:center;gap:8px}
+.tg{position:relative;width:34px;height:19px;cursor:pointer}
+.tg input{opacity:0;width:0;height:0;position:absolute}
+.tg-s{position:absolute;inset:0;background:var(--border2);border-radius:10px;transition:background .2s}
+.tg-s::before{content:'';position:absolute;width:13px;height:13px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s}
+.tg input:checked + .tg-s{background:var(--orange)}
+.tg input:checked + .tg-s::before{transform:translateX(15px)}
+.tg-l{font-size:12px;color:var(--muted)}
+/* DROPZONES */
+.dg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.dz{border:2px dashed var(--border2);border-radius:var(--rl);padding:24px 18px;text-align:center;cursor:pointer;position:relative;background:var(--s2);transition:all .2s}
+.dz:hover,.dz.ov{border-color:var(--orange);background:var(--odim)}
+.dz.ok{border-style:solid;border-color:var(--green);background:var(--gdim)}
+.dz input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.dz-ic{font-size:24px;margin-bottom:8px;display:block;opacity:.6}
+.dz.ok .dz-ic{opacity:1}
+.dz-t{font-size:13px;font-weight:600;margin-bottom:3px}
+.dz-d{font-size:11px;color:var(--dim);line-height:1.5}
+.dz-ok{font-size:11px;color:var(--green);margin-top:7px;font-weight:500;display:none}
+/* SOURCE BADGE */
+.sb{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:20px;font-size:12px;font-weight:500;margin-bottom:12px}
+.sb.def{background:var(--bdim);border:1px solid rgba(59,130,246,.2);color:#93c5fd}
+.sb.cus{background:var(--gdim);border:1px solid rgba(34,197,94,.25);color:#86efac}
+.sb-d{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:var(--blue)}
+.sb.cus .sb-d{background:var(--green)}
+/* FORMAT GUIDE */
+.fg{background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:var(--r);padding:11px 14px;font-size:12px;color:#c4b5fd;line-height:1.7;margin-top:10px}
+.fg code{font-family:monospace;background:rgba(124,58,237,.15);padding:1px 5px;border-radius:3px;font-size:11px}
+/* SIMULAR LAYOUT */
+.sim-layout{display:grid;grid-template-columns:300px 1fr;height:calc(100vh - 110px);gap:0}
+.sim-left{border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sim-right{display:flex;flex-direction:column;overflow:hidden}
+/* PROMPT PANEL */
+.pp{padding:0;border-bottom:1px solid var(--border);flex-shrink:0}
+.pp-tabs{display:flex;border-bottom:1px solid var(--border)}
+.pp-tab{flex:1;padding:8px 10px;font-size:11px;font-weight:600;cursor:pointer;border:none;background:none;font-family:"Inter",sans-serif;color:var(--dim);border-bottom:2px solid transparent;transition:all .15s}
+.pp-tab.active{color:var(--orange);border-bottom-color:var(--orange);background:var(--odim)}
+.pp-tab.active-cl{color:var(--purple);border-bottom-color:var(--purple);background:var(--pdim)}
+.pp-body{padding:10px 13px}
+.pp-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.pp-t{font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px}
+.pp-ci{width:20px;height:20px;border-radius:5px;background:var(--odim);border:1px solid var(--oborder);display:flex;align-items:center;justify-content:center;font-size:11px}
+.ptags{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.ptag{font-size:9px;padding:2px 7px;border-radius:3px;cursor:pointer;background:var(--s3);border:1px solid var(--border2);color:var(--muted);transition:all .12s;font-family:monospace}
+.ptag:hover{border-color:var(--orange);color:var(--orange)}
+/* CONV LIST */
+.cl-panel{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.cl-head{padding:9px 13px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.cl-srch{flex:1;background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;font-family:'Inter',sans-serif;font-size:12px;color:var(--text);outline:none}
+.cl-srch:focus{border-color:var(--orange)}
+.cl-srch::placeholder{color:var(--dim)}
+.sel-bar{padding:6px 13px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--s2)}
+.sel-all{display:flex;align-items:center;gap:7px;cursor:pointer;font-size:11px;color:var(--muted)}
+.sel-cnt{font-size:11px;color:var(--dim);font-family:monospace}
+.cl-scroll{flex:1;overflow-y:auto}
+.ci-wrap{display:flex;align-items:center;gap:9px;padding:8px 13px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
+.ci-wrap:hover{background:var(--s2)}
+.ci-wrap.sel{background:var(--pdim)}
+.chk{width:14px;height:14px;border:1px solid var(--border2);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .12s}
+.chk.on{background:rgba(167,139,250,.7);border-color:var(--purple)}
+.ci-body{min-width:0;flex:1}
+.ci-id{font-family:monospace;font-size:10px;color:var(--dim);display:flex;align-items:center;gap:5px}
+.ci-as{font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ci-mo{font-size:10px;color:var(--dim);margin-top:1px}
+.vdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+/* RUN BAR */
+.run-bar{padding:10px 13px;border-top:1px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;gap:7px}
+.run-info{font-size:11px;color:var(--dim);text-align:center}
+/* RIGHT TABS */
+.rtabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.rtab{padding:9px 16px;font-size:12px;font-weight:500;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none;transition:all .15s}
+.rtab:hover{color:var(--text)}
+.rtab.active{color:var(--purple);border-bottom-color:var(--purple)}
+.rtab-c{flex:1;overflow-y:auto;padding:14px 18px;display:none}
+.rtab-c.active{display:block}
+/* SIM CARDS GRID */
+.scg{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.sc{background:var(--s1);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden}
+.sc-h{padding:9px 13px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.sc-id{font-family:monospace;font-size:11px;color:var(--dim)}
+.sc-mo{font-size:10px;color:var(--dim)}
+.sc-ass{font-size:11px;color:var(--muted);padding:6px 12px;background:var(--s2);margin:0 12px 6px;border-radius:5px;line-height:1.4}
+.sc-body{max-height:280px;overflow-y:auto;padding:8px 11px;display:flex;flex-direction:column;gap:7px}
+.sc-verd{padding:7px 12px;margin:5px 12px 10px;border-radius:6px;font-size:11px;font-weight:500}
+.vd-sim{background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);color:#86efac}
+.vd-par{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);color:#fcd34d}
+.vd-nao{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);color:#fca5a5}
+.vd-run{background:var(--pdim);border:1px solid var(--pborder);color:var(--purple)}
+.vd-err{background:rgba(251,146,60,.08);border:1px solid rgba(251,146,60,.25);color:#fb923c}
+/* CHAT BUBBLES */
+.bw{display:flex;flex-direction:column}
+.bw.ag{align-items:flex-start}
+.bw.cl{align-items:flex-end}
+.bl{font-size:9px;color:var(--dim);margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em}
+.bb{max-width:88%;padding:7px 11px;border-radius:10px;font-size:11px;line-height:1.55}
+.bb.ag{background:var(--s2);color:var(--text);border:1px solid var(--border);border-top-left-radius:2px}
+.bb.ai{background:var(--pdim);color:#e9d5ff;border:1px solid var(--pborder);border-top-left-radius:2px}
+.bb.cl{background:var(--odim);color:#fed7aa;border:1px solid var(--oborder);border-top-right-radius:2px}
+/* KEYWORDS MENU */
+.kw-menu{margin:6px 12px 10px;border-radius:6px;overflow:hidden;border:1px solid rgba(167,139,250,.2)}
+.kw-toggle{width:100%;background:rgba(167,139,250,.08);border:none;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;color:#c084fc;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;gap:6px}
+.kw-toggle:hover{background:rgba(167,139,250,.14)}
+.kw-toggle svg{transition:transform .2s;flex-shrink:0}
+.kw-toggle.open svg{transform:rotate(180deg)}
+.kw-body{display:none;padding:10px 12px;background:rgba(167,139,250,.04)}
+.kw-body.open{display:block}
+.kw-step{margin-bottom:10px}
+.kw-step:last-child{margin-bottom:0}
+.kw-step-label{font-size:10px;font-weight:600;color:#a78bfa;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
+.kw-step-text{font-size:11px;color:#9d94c8;line-height:1.55;margin-top:5px}
+.kw-tags{display:flex;flex-wrap:wrap;gap:4px}
+.kw-tag{font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(167,139,250,.15);border:1px solid rgba(167,139,250,.3);color:#c084fc;font-family:monospace}
+.kw-loading{font-size:11px;color:#a78bfa;font-style:italic;display:flex;align-items:center;gap:6px}
+
+/* SPIN */
+.spin{width:18px;height:18px;border:2px solid var(--border2);border-top-color:var(--purple);border-radius:50%;animation:sp .7s linear infinite;flex-shrink:0}
+@keyframes sp{to{transform:rotate(360deg)}}
+.sc-prog{display:flex;align-items:center;justify-content:center;padding:28px;color:var(--dim);font-size:12px;font-family:monospace;gap:10px}
+/* RESULTS */
+.big-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:4px}
+.bc{background:var(--s1);border:1px solid var(--border);border-radius:var(--rl);padding:16px 18px;position:relative;overflow:hidden}
+.bc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.bc-sim::before{background:var(--green)}.bc-par::before{background:var(--amber)}.bc-nao::before{background:var(--red)}.bc-tot::before{background:var(--orange)}
+.bc-l{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:8px}
+.bc-v{font-size:38px;font-weight:700;line-height:1;margin-bottom:3px;font-variant-numeric:tabular-nums}
+.bc-sim .bc-v{color:var(--green)}.bc-par .bc-v{color:var(--amber)}.bc-nao .bc-v{color:var(--red)}.bc-tot .bc-v{color:var(--orange)}
+.bc-s{font-size:12px;color:var(--dim)}
+.ch2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.cc{background:var(--s1);border:1px solid var(--border);border-radius:var(--rl);padding:18px}
+.cc-t{font-size:13px;font-weight:600;margin-bottom:2px}
+.cc-s{font-size:11px;color:var(--dim);margin-bottom:14px}
+.cw{position:relative;height:240px}
+.cw-lg{position:relative;height:380px}
+/* TABLE */
+.tc{background:var(--s1);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden}
+.th{padding:13px 18px;border-bottom:1px solid var(--border)}
+.th h3{font-size:13px;font-weight:600;margin-bottom:2px}
+.th p{font-size:11px;color:var(--dim)}
+table{width:100%;border-collapse:collapse}
+thead th{padding:8px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);font-weight:400;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody tr{border-bottom:1px solid #1a1a1a;transition:background .1s}
+tbody tr:hover{background:var(--s2)}
+tbody tr:last-child{border-bottom:none}
+tbody td{padding:9px 14px;font-size:12px;vertical-align:middle}
+.bdg{display:inline-flex;align-items:center;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:500}
+.b-sim{background:var(--gdim);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.b-par{background:var(--adim);color:var(--amber);border:1px solid rgba(245,158,11,.2)}
+.b-nao{background:var(--rdim);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+.mb{height:5px;background:var(--border);border-radius:3px;overflow:hidden;width:80px}
+.mf{height:100%;border-radius:3px}
+/* SAMPLE LIST */
+.slist{max-height:300px;overflow-y:auto}
+.si{padding:9px 16px;border-bottom:1px solid #1a1a1a;display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:start}
+.si:hover{background:var(--s2)}
+.si-id{font-family:monospace;font-size:10px;color:var(--dim);margin-bottom:2px}
+.si-as{font-size:12px;font-weight:500;margin-bottom:2px;line-height:1.4}
+.si-rs{font-size:11px;color:var(--muted);font-style:italic}
+.fltrs{display:flex;gap:5px}
+.fb{background:var(--s2);border:1px solid var(--border2);border-radius:5px;padding:3px 9px;font-size:11px;font-weight:500;cursor:pointer;color:var(--muted);transition:all .15s}
+.fb:hover{border-color:var(--orange);color:var(--text)}
+.fb.fa{background:var(--orange);color:#fff;border-color:var(--orange)}
+.fb.fs{background:var(--gdim);border-color:rgba(34,197,94,.3);color:var(--green)}
+.fb.fp{background:var(--adim);border-color:rgba(245,158,11,.3);color:var(--amber)}
+.fb.fn{background:var(--rdim);border-color:rgba(239,68,68,.3);color:var(--red)}
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+/* EMPTY */
+.empty{text-align:center;padding:60px 20px;color:var(--dim)}
+.empty-ic{font-size:36px;margin-bottom:12px;opacity:.3}
+.empty-t{font-size:14px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.empty-d{font-size:12px;line-height:1.6}
+/* RESPONSIVE */
+@media(max-width:900px){.sidebar{width:60px}.main{margin-left:60px}.logo,.nl,.ua .un,.ua .ur{display:none}.big-grid,.ch2{grid-template-columns:1fr 1fr}.ir,.dg{grid-template-columns:1fr}.sim-layout{grid-template-columns:1fr}.sim-left{display:none}}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="logo">Nexus<span>.</span></div>
+  <nav class="nav" id="nav">
+    <button class="ni active" data-panel="config">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      <span class="nl">Configurar</span>
+    </button>
+    <button class="ni" data-panel="dados">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+      <span class="nl">Dados</span>
+    </button>
+    <button class="ni" data-panel="simular">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span class="nl">Simular</span>
+    </button>
+    <button class="ni" data-panel="resultados">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span class="nl">Resultados</span>
+    </button>
+  </nav>
+  <div class="ua">
+    <div class="av">U</div>
+    <div><div class="un">Usuário</div><div class="ur">admin</div></div>
+  </div>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <div>
+      <div class="pt" id="pg-t">Configurar</div>
+      <div class="ps" id="pg-s">Configure a chave de API</div>
+    </div>
+    <div class="ta">
+      <button class="btn btn-g" id="btn-exp" style="display:none">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Exportar
+      </button>
+      <span class="sp" id="status">Pronto</span>
+    </div>
+  </div>
+
+  <div class="content" id="content">
+
+  <!-- CONFIGURAR -->
+  <div class="panel active" id="panel-config">
+    <div class="card">
+      <div class="ch"><div><div class="ct"><div class="ci">🔑</div>Configuração de API</div><div class="cs">Compatível com qualquer endpoint OpenAI</div></div></div>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px">
+        <div>
+          <label class="fl">URL do endpoint</label>
+          <input class="inp" type="text" id="api-url" placeholder="https://api.openai.com/v1/chat/completions" style="font-size:12px">
+        </div>
+        <div>
+          <label class="fl">Modelo</label>
+          <input class="inp" type="text" id="api-model" placeholder="gpt-4o" style="font-size:12px">
+        </div>
+      </div>
+      <label class="fl">Chave de API</label>
+      <input class="inp" type="password" id="api-key" placeholder="sk-...">
+      <div id="key-ok" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:var(--r);font-size:12px;color:#86efac">✓ Chave configurada — pronto para simular</div>
+    </div>
+    <div class="card">
+      <div class="ch"><div><div class="ct"><div class="ci">⚡</div>Parâmetros</div><div class="cs">Velocidade das simulações</div></div><span class="sp" id="src-info">Sem dados — carregue KB e conversas</span></div>
+      <div class="ir">
+        <div>
+          <label class="fl">Simulações simultâneas</label>
+          <div class="sw-r"><input type="range" id="sl-c" min="1" max="20" value="10" step="1"><span class="sv" id="sl-cv">10</span></div>
+          <div class="sh">Mais simultâneas = mais rápido. Reduza se der erro de rate limit.</div>
+        </div>
+        <div>
+          <label class="fl">Máx. turnos por conversa</label>
+          <div class="sw-r"><input type="range" id="sl-t" min="3" max="16" value="8" step="1"><span class="sv" id="sl-tv">8</span></div>
+          <div class="sh">Limita as trocas de mensagem por atendimento.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DADOS -->
+  <div class="panel" id="panel-dados">
+    <div class="card">
+      <div class="ch"><div><div class="ct"><div class="ci">📋</div>Base de Conhecimento</div><div class="cs">KB usada pela IA nas respostas simuladas</div></div><button class="btn btn-r" id="btn-reset-kb">↺ Restaurar padrão</button></div>
+      <div class="sb def" id="kb-badge"><div class="sb-d"></div>KB não carregada — opcional, a IA usará sua base interna</div>
+      <div class="dz" id="dz-kb"><input type="file" accept=".txt,.md,.json" id="inp-kb"><span class="dz-ic">📄</span><div class="dz-t">Arrastar ou clicar para carregar a KB</div><div class="dz-d">.txt · .md · .json — Opcional</div><div class="dz-ok" id="kb-ok"></div></div>
+    </div>
+    <div class="card">
+      <div class="ch"><div><div class="ct"><div class="ci">💬</div>Conversas</div><div class="cs">Arquivo de atendimentos para simular</div></div><div style="display:flex;gap:8px;align-items:center"><span style="font-size:12px;color:var(--dim)" id="conv-cnt">0 conversas</span><button class="btn btn-r" id="btn-reset-conv">↺ Restaurar padrão</button></div></div>
+      <div class="sb def" id="conv-badge" style="border-color:rgba(239,68,68,.2);color:#fca5a5"><div class="sb-d" style="background:var(--red)"></div>Nenhuma conversa carregada — arraste um arquivo .json</div>
+      <div class="dg">
+        <div class="dz" id="dz-rep"><input type="file" accept=".json" id="inp-rep"><span class="dz-ic">🔄</span><div class="dz-t">Substituir conversas</div><div class="dz-d">Substitui todos os dados atuais</div><div class="dz-ok" id="rep-ok"></div></div>
+        <div class="dz" id="dz-add"><input type="file" accept=".json" id="inp-add"><span class="dz-ic">➕</span><div class="dz-t">Adicionar conversas</div><div class="dz-d">Adiciona às conversas existentes</div><div class="dz-ok" id="add-ok"></div></div>
+      </div>
+      <div class="fg"><b>Formato JSON:</b> Array com <code>id</code>, <code>assunto</code>, <code>conv</code> (com prefixos <code>[CLIENTE]:</code> e <code>[ATENDENTE]:</code>), <code>motivo</code> (opcional).</div>
+    </div>
+  </div>
+
+  <!-- SIMULAR -->
+  <div class="panel" id="panel-simular" style="gap:0;padding:0;margin:-20px -32px 0">
+    <div class="sim-layout">
+      <div class="sim-left">
+        <!-- Prompt -->
+        <div class="pp">
+          <div class="pp-tabs">
+            <button class="pp-tab active" id="pp-tab-agent" onclick="switchPromptTab('agent')">🤖 Agente</button>
+            <button class="pp-tab" id="pp-tab-client" onclick="switchPromptTab('client')">👤 Cliente</button>
+          </div>
+
+          <!-- AGENT PROMPT -->
+          <div class="pp-body" id="pp-body-agent">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+              <span style="font-size:10px;color:var(--dim)">System prompt do agente de atendimento</span>
+              <div class="tg-w"><label class="tg"><input type="checkbox" id="tg-p" checked><span class="tg-s"></span></label><span style="font-size:10px;color:var(--dim)" id="pc-lbl">0 chars</span></div>
+            </div>
+            <textarea class="ta-inp" id="agent-prompt" rows="5" style="min-height:90px;font-size:11px" placeholder="Cole o system prompt da sua IA de atendimento...&#10;&#10;Ex: Você é a Renata, atendente da Softcom. Responda usando apenas a base de conhecimento. Se não souber, abra chamado para um técnico."></textarea>
+            <div class="ptags">
+              <span style="font-size:9px;color:var(--dim);align-self:center">Tags:</span>
+              <span class="ptag" id="tag-kb">&#123;&#123;KB&#125;&#125;</span>
+              <span class="ptag" id="tag-assunto">&#123;&#123;ASSUNTO&#125;&#125;</span>
+              <span class="ptag" id="tag-motivo">&#123;&#123;MOTIVO&#125;&#125;</span>
+            </div>
+          </div>
+
+          <!-- CLIENT PROMPT -->
+          <div class="pp-body" id="pp-body-client" style="display:none">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+              <span style="font-size:10px;color:var(--dim)">Como o cliente simulado deve se comportar</span>
+              <span style="font-size:10px;color:var(--dim)" id="pc-cl-lbl">0 chars</span>
+            </div>
+            <textarea class="ta-inp" id="client-prompt" rows="5" style="min-height:90px;font-size:11px;border-color:rgba(167,139,250,.3)" placeholder="Descreva como o cliente deve se comportar...&#10;&#10;Ex: Você é um cliente leigo que está ligando com um problema no sistema. Quando o atendente der uma instrução, tente seguir e relate o resultado. Só confirme que resolveu depois de executar o último passo. Nunca peça para abrir chamado você mesmo." oninput="updateClientPromptChars()"></textarea>
+            <div style="margin-top:8px;padding:9px 11px;background:var(--pdim);border:1px solid var(--pborder);border-radius:var(--r);font-size:11px;color:#c4b5fd;line-height:1.6">
+              <b style="color:#e9d5ff">Tags disponíveis:</b> Use <code style="background:rgba(167,139,250,.2);padding:1px 5px;border-radius:3px">&#123;&#123;ASSUNTO&#125;&#125;</code> para inserir o assunto do atendimento e <code style="background:rgba(167,139,250,.2);padding:1px 5px;border-radius:3px">&#123;&#123;FALAS_ORIGINAIS&#125;&#125;</code> para as falas reais do cliente como referência de contexto.
+            </div>
+            <div class="ptags" style="margin-top:8px">
+              <span style="font-size:9px;color:var(--dim);align-self:center">Inserir:</span>
+              <span class="ptag" style="border-color:rgba(167,139,250,.3);color:var(--purple)" id="tag-cl-assunto">&#123;&#123;ASSUNTO&#125;&#125;</span>
+              <span class="ptag" style="border-color:rgba(167,139,250,.3);color:var(--purple)" id="tag-cl-falas">&#123;&#123;FALAS_ORIGINAIS&#125;&#125;</span>
+            </div>
+          </div>
+        </div>
+        <!-- Conv list -->
+        <div class="cl-panel">
+          <div class="cl-head">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--dim);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input class="cl-srch" type="text" id="cl-srch" placeholder="Buscar ID, assunto, motivo...">
+          </div>
+          <div class="sel-bar">
+            <div class="sel-all" id="btn-sel-all"><div class="chk" id="chk-all"></div><span>Todas</span></div>
+            <span class="sel-cnt" id="sel-cnt">0 selecionadas</span>
+          </div>
+          <div class="cl-scroll" id="cl-scroll"></div>
+        </div>
+        <!-- Run -->
+        <div class="run-bar">
+          <div class="run-info" id="run-info">Selecione conversas para simular</div>
+          <button class="btn btn-p" id="btn-sim" style="width:100%;justify-content:center" disabled>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Simular selecionadas
+          </button>
+        </div>
+      </div>
+      <!-- RIGHT -->
+      <div class="sim-right">
+        <div class="rtabs">
+          <button class="rtab active" data-tab="conversas">Conversas</button>
+          <button class="rtab" data-tab="resultados">Resultados <span id="res-badge" style="display:none;font-size:9px;padding:1px 5px;border-radius:3px;background:var(--pdim);color:var(--purple);margin-left:4px"></span></button>
+        </div>
+        <div class="rtab-c active" id="rtab-conversas">
+          <div class="scg" id="scg">
+            <div style="grid-column:1/-1" class="empty"><div class="empty-ic">💬</div><div class="empty-t">Nenhuma simulação ainda</div><div class="empty-d">Carregue a KB e as conversas na aba <b>Dados</b>, depois selecione e simule</div></div>
+          </div>
+        </div>
+        <div class="rtab-c" id="rtab-resultados">
+          <div class="empty" id="res-empty"><div class="empty-ic">📊</div><div class="empty-t">Sem resultados ainda</div><div class="empty-d">Execute simulações para ver os gráficos</div></div>
+          <div id="res-body" style="display:none;flex-direction:column;gap:14px">
+            <div class="big-grid">
+              <div class="bc bc-sim"><div class="bc-l">IA resolve</div><div class="bc-v" id="rs-sim">—</div><div class="bc-s" id="rs-sim-n">—</div></div>
+              <div class="bc bc-par"><div class="bc-l">Parcial</div><div class="bc-v" id="rs-par">—</div><div class="bc-s" id="rs-par-n">—</div></div>
+              <div class="bc bc-nao"><div class="bc-l">Não resolvível</div><div class="bc-v" id="rs-nao">—</div><div class="bc-s" id="rs-nao-n">—</div></div>
+              <div class="bc bc-tot"><div class="bc-l">Total simulado</div><div class="bc-v" id="rs-tot">—</div><div class="bc-s">conversas</div></div>
+            </div>
+            <div class="ch2">
+              <div class="cc"><div class="cc-t">Distribuição geral</div><div class="cc-s">Resultado das simulações</div><div class="cw"><canvas id="c-donut"></canvas></div></div>
+              <div class="cc"><div class="cc-t">% Resolvível por motivo</div><div class="cc-s">Dentro de cada tipo de atendimento</div><div class="cw"><canvas id="c-bar"></canvas></div></div>
+            </div>
+            <div class="cc"><div class="cc-t">Volume por motivo</div><div class="cc-s">Composição: resolvível vs. parcial vs. não resolvível</div><div class="cw-lg"><canvas id="c-stack"></canvas></div></div>
+            <div class="tc">
+              <div class="th"><h3>Detalhamento por motivo</h3><p>Baseado nas simulações executadas com sua IA e KB</p></div>
+              <table><thead><tr><th>Motivo</th><th style="text-align:center">Total</th><th style="text-align:center">Resolvível KB</th><th style="text-align:center">Não resolvido</th><th style="text-align:center">%</th><th style="width:80px">Barra</th></tr></thead><tbody id="res-tbl"></tbody></table>
+            </div>
+            <div class="tc">
+              <div class="th" style="display:flex;justify-content:space-between;align-items:center">
+                <div><h3>Amostra de simulações</h3><p>Últimas avaliações realizadas</p></div>
+                <div class="fltrs" id="sample-fltrs">
+                  <button class="fb fa" data-f="all">Todos</button>
+                  <button class="fb" data-f="sim">Resolvível KB</button>
+                  <button class="fb" data-f="nao">Não resolvido</button>
+                </div>
+              </div>
+              <div class="slist" id="res-slist"></div>
+            </div>
+            <div style="display:flex;justify-content:flex-end">
+              <button class="btn btn-g" id="btn-exp2">↓ Exportar JSON</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULTADOS GERAIS -->
+  <div class="panel" id="panel-resultados">
+    <div class="empty" id="rg-empty"><div class="empty-ic">📊</div><div class="empty-t">Nenhum resultado ainda</div><div class="empty-d">Execute simulações na aba <b>Simular</b> para ver os gráficos aqui</div></div>
+    <div id="rg-body" style="display:none;flex-direction:column;gap:14px">
+      <div class="big-grid">
+        <div class="bc bc-sim"><div class="bc-l">IA resolve completamente</div><div class="bc-v" id="rg-sim">—</div><div class="bc-s" id="rg-sim-n">—</div></div>
+        <div class="bc bc-par"><div class="bc-l" style="opacity:.4">Parcial (removido)</div><div class="bc-v" id="rg-par">—</div><div class="bc-s" id="rg-par-n">—</div></div>
+        <div class="bc bc-nao"><div class="bc-l">Não resolvível por IA</div><div class="bc-v" id="rg-nao">—</div><div class="bc-s" id="rg-nao-n">—</div></div>
+        <div class="bc bc-tot"><div class="bc-l">Total simulado</div><div class="bc-v" id="rg-tot">—</div><div class="bc-s">conversas</div></div>
+      </div>
+      <div class="ch2">
+        <div class="cc"><div class="cc-t">Distribuição geral</div><div class="cc-s">Resultado de todas as simulações realizadas</div><div class="cw"><canvas id="rg-donut"></canvas></div></div>
+        <div class="cc"><div class="cc-t">% Resolvível por motivo</div><div class="cc-s">Dentro de cada tipo de atendimento</div><div class="cw"><canvas id="rg-bar"></canvas></div></div>
+      </div>
+      <div class="cc"><div class="cc-t">Volume por motivo</div><div class="cc-s">Composição completa de todas as simulações</div><div class="cw-lg"><canvas id="rg-stack"></canvas></div></div>
+      <div class="tc">
+        <div class="th"><h3>Detalhamento por motivo</h3><p>Resultado real das simulações com sua IA e KB</p></div>
+        <table><thead><tr><th>Motivo</th><th style="text-align:center">Total</th><th style="text-align:center">Resolvível</th><th style="text-align:center">Não res.</th><th style="text-align:center">%</th><th style="width:90px">Barra</th></tr></thead><tbody id="rg-tbl"></tbody></table>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn" id="btn-clear-res" style="color:#fca5a5;border-color:rgba(239,68,68,.3)">🗑 Limpar histórico</button>
+        <button class="btn btn-g" id="btn-exp3">↓ Exportar resultados JSON</button>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<script>
+const D=[];
+const KB_DEFAULT="";
+
+let aData=[], aKB='', selIds=new Set(), simRes={};
+let filtConvs=[], cDonut,cBar,cStack,rgDonut,rgBar,rgStack;
+
+// ── PERSISTÊNCIA DE RESULTADOS ────────────────────────
+function saveSimRes(){
+  try{
+    // Salva sem o campo 'conv' para economizar espaço
+    const slim={};
+    Object.entries(simRes).forEach(([k,v])=>{
+      const {conv,...rest}=v;
+      slim[k]=rest;
+    });
+    localStorage.setItem('nexus_sim_res',JSON.stringify(slim));
+  }catch(e){console.warn('Erro ao salvar resultados:',e);}
+}
+function loadSimRes(){
+  try{
+    const raw=localStorage.getItem('nexus_sim_res');
+    if(raw) simRes=JSON.parse(raw);
+  }catch(e){simRes={};}
+}
+loadSimRes();
+
+const PAGE={
+  config:['Configurar','Configure a chave de API e parâmetros da simulação'],
+  dados:['Gerenciar Dados','Substitua a base de conhecimento e os arquivos de conversas'],
+  simular:['Simular Atendimentos','Selecione conversas, configure o prompt e simule com sua IA'],
+  resultados:['Resultados Gerais','Gráficos e análise de todas as simulações realizadas'],
+};
+
+// NAV
+function goPanel(p) {
+  console.log("goPanel called:", p);
+  document.querySelectorAll('.ni').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  const btn = document.querySelector('.ni[data-panel="'+p+'"]');
+  if(btn) btn.classList.add('active');
+  const panel = document.getElementById('panel-'+p);
+  if(panel) panel.classList.add('active');
+  if(PAGE[p]){
+    document.getElementById('pg-t').textContent=PAGE[p][0];
+    document.getElementById('pg-s').textContent=PAGE[p][1];
+  }
+}
+document.getElementById('nav').addEventListener('click', e=>{
+  const btn = e.target.closest('button.ni');
+  if(!btn||!btn.dataset.panel) return;
+  goPanel(btn.dataset.panel);
+});
+
+// RIGHT TABS
+function goTab(t) {
+  document.querySelectorAll('.rtab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.rtab-c').forEach(x=>x.classList.remove('active'));
+  const btn=document.querySelector('.rtab[data-tab="'+t+'"]');
+  if(btn) btn.classList.add('active');
+  const tc=document.getElementById('rtab-'+t);
+  if(tc) tc.classList.add('active');
+}
+document.querySelector('.rtabs').addEventListener('click', e=>{
+  const btn=e.target.closest('button.rtab');
+  if(!btn||!btn.dataset.tab) return;
+  goTab(btn.dataset.tab);
+});
+
+// SAMPLE FILTERS
+document.getElementById('sample-fltrs').addEventListener('click', e=>{
+  const btn=e.target.closest('button.fb');
+  if(!btn||!btn.dataset.f) return;
+  document.querySelectorAll('#sample-fltrs .fb').forEach(b=>b.className='fb');
+  const f=btn.dataset.f;
+  btn.classList.add(f==='all'?'fa':f==='sim'?'fs':'fn');
+  renderSamples(f);
+});
+
+// KEY
+(()=>{const saved=localStorage.getItem('nexus_api_key');if(saved){document.getElementById('api-key').value=saved;document.getElementById('key-ok').style.display='block';}})();
+document.getElementById('api-key').addEventListener('input', ()=>{
+  const v=document.getElementById('api-key').value.trim();
+  if(v.length>10)localStorage.setItem('nexus_api_key',v);
+  document.getElementById('key-ok').style.display=(v.length>10)?'block':'none';
+});
+
+// SLIDERS
+document.getElementById('sl-c').addEventListener('input',e=>document.getElementById('sl-cv').textContent=e.target.value);
+document.getElementById('sl-t').addEventListener('input',e=>document.getElementById('sl-tv').textContent=e.target.value);
+
+// API CONFIG + PROMPTS — carregar do cache
+(()=>{
+  const au=localStorage.getItem('nexus_api_url');
+  if(au){document.getElementById('api-url').value=au;}
+  const am=localStorage.getItem('nexus_api_model');
+  if(am){document.getElementById('api-model').value=am;}
+  const ap=localStorage.getItem('nexus_agent_prompt');
+  if(ap){document.getElementById('agent-prompt').value=ap;}
+  const cp=localStorage.getItem('nexus_client_prompt');
+  if(cp){document.getElementById('client-prompt').value=cp;}
+})();
+document.getElementById('api-url').addEventListener('input',()=>localStorage.setItem('nexus_api_url',document.getElementById('api-url').value));
+document.getElementById('api-model').addEventListener('input',()=>localStorage.setItem('nexus_api_model',document.getElementById('api-model').value));
+document.getElementById('agent-prompt').addEventListener('input',()=>{
+  localStorage.setItem('nexus_agent_prompt',document.getElementById('agent-prompt').value);
+  updatePC();
+});
+document.getElementById('client-prompt').addEventListener('input',()=>{
+  localStorage.setItem('nexus_client_prompt',document.getElementById('client-prompt').value);
+});
+document.getElementById('tg-p').addEventListener('change',()=>{
+  const on=document.getElementById('tg-p').checked;
+  document.getElementById('agent-prompt').style.opacity=on?'1':'0.4';
+});
+
+function switchPromptTab(tab){
+  document.getElementById('pp-body-agent').style.display = tab==='agent' ? 'block' : 'none';
+  document.getElementById('pp-body-client').style.display = tab==='client' ? 'block' : 'none';
+  document.getElementById('pp-tab-agent').className = 'pp-tab' + (tab==='agent' ? ' active' : '');
+  document.getElementById('pp-tab-client').className = 'pp-tab' + (tab==='client' ? ' active-cl' : '');
+}
+function updateClientPromptChars(){
+  const v = document.getElementById('client-prompt').value.length;
+  document.getElementById('pc-cl-lbl').textContent = v.toLocaleString('pt-BR') + ' chars';
+}
+function getClientPrompt(rec){
+  const ta = document.getElementById('client-prompt');
+  const val = ta ? ta.value.trim() : '';
+  if(!val) return null; // null = use built-in default
+  const origCl = (rec.conv||'').split('\n')
+    .filter(function(l){ return l.trim().startsWith('[CLIENTE]:'); })
+    .map(function(l){ return l.replace('[CLIENTE]:','').trim(); })
+    .slice(0,14).map(function(l,i){ return (i+1)+'. '+l; }).join('\n');
+  return val
+    .replace('{{ASSUNTO}}', rec.assunto||'')
+    .replace('{{MOTIVO}}', rec.motivo||'')
+    .replace('{{CNPJ}}', rec.cnpj||'')
+    .replace('{{FALAS_ORIGINAIS}}', origCl);
+}
+function updatePC(){
+  const v=document.getElementById('agent-prompt').value.length;
+  document.getElementById('pc-lbl').textContent=v.toLocaleString('pt-BR')+' chars';
+}
+
+function insertTag(tag){
+  const ta=document.getElementById('agent-prompt');
+  const s=ta.selectionStart,e=ta.selectionEnd;
+  ta.value=ta.value.slice(0,s)+tag+ta.value.slice(e);
+  ta.selectionStart=ta.selectionEnd=s+tag.length;
+  ta.focus();updatePC();
+}
+document.getElementById('tag-kb').addEventListener('click',()=>insertTag('{{KB}}'));
+document.getElementById('tag-cl-assunto').addEventListener('click',function(){
+  const ta=document.getElementById('client-prompt');
+  const s=ta.selectionStart,e=ta.selectionEnd;
+  ta.value=ta.value.slice(0,s)+'{{ASSUNTO}}'+ta.value.slice(e);
+  ta.selectionStart=ta.selectionEnd=s+11;
+  ta.focus();updateClientPromptChars();
+});
+document.getElementById('tag-cl-falas').addEventListener('click',function(){
+  const ta=document.getElementById('client-prompt');
+  const s=ta.selectionStart,e=ta.selectionEnd;
+  ta.value=ta.value.slice(0,s)+'{{FALAS_ORIGINAIS}}'+ta.value.slice(e);
+  ta.selectionStart=ta.selectionEnd=s+19;
+  ta.focus();updateClientPromptChars();
+});
+document.getElementById('tag-assunto').addEventListener('click',()=>insertTag('{{ASSUNTO}}'));
+document.getElementById('tag-motivo').addEventListener('click',()=>insertTag('{{MOTIVO}}'));
+
+// SEARCH
+document.getElementById('cl-srch').addEventListener('input',buildList);
+// SELECT ALL
+document.getElementById('btn-sel-all').addEventListener('click',toggleAll);
+
+// FILE INPUTS via event delegation
+document.getElementById('inp-kb').addEventListener('change',e=>loadKB(e.target.files[0]));
+document.getElementById('inp-rep').addEventListener('change',e=>loadConv(e.target.files[0],'replace'));
+document.getElementById('inp-add').addEventListener('change',e=>loadConv(e.target.files[0],'add'));
+
+// DRAGOVER/DROP on dropzones
+['dz-kb','dz-rep','dz-add'].forEach(id=>{
+  const el=document.getElementById(id);
+  el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('ov');});
+  el.addEventListener('dragleave',()=>el.classList.remove('ov'));
+  el.addEventListener('drop',e=>{
+    e.preventDefault();el.classList.remove('ov');
+    const f=e.dataTransfer.files[0];if(!f)return;
+    if(id==='dz-kb')loadKB(f);
+    else if(id==='dz-rep')loadConv(f,'replace');
+    else loadConv(f,'add');
+  });
+});
+
+// RESET buttons
+document.getElementById('btn-reset-kb').addEventListener('click',resetKB);
+document.getElementById('btn-reset-conv').addEventListener('click',resetConv);
+
+// SIM BUTTON
+document.getElementById('btn-sim').addEventListener('click',runSims);
+// EXPORT
+document.getElementById('btn-exp').addEventListener('click',exportJ);
+document.getElementById('btn-exp2').addEventListener('click',exportJ);
+document.getElementById('btn-exp3').addEventListener('click',exportJ);
+document.getElementById('btn-clear-res').addEventListener('click',()=>{
+  if(!confirm('Limpar todo o histórico de simulações salvo?'))return;
+  simRes={};
+  localStorage.removeItem('nexus_sim_res');
+  updateCharts();
+  buildList();
+  document.getElementById('btn-exp').style.display='none';
+  const b=document.getElementById('res-badge');b.style.display='none';
+  setStatus('Histórico limpo');
+});
+
+// ── HELPERS ──────────────────────────────────────────
+function getKey(){return document.getElementById('api-key').value.trim();}
+function getPrompt(){
+  if(!document.getElementById('tg-p').checked)return'';
+  return document.getElementById('agent-prompt').value.trim();
+}
+function getMotivo(a,c){
+  const t=((a||'')+(c||'')).toLowerCase();
+  if(/nota fiscal rejeitada|rejeição/.test(t))return'NF-e Rejeitada';
+  if(/erro na emissão|série da nota/.test(t))return'Erro NF-e';
+  if(/cancelamento de nota/.test(t))return'Cancelamento NF-e';
+  if(/emissão de nota|emitir nota|nota fiscal|nfe|nf-e/.test(t))return'Emissão de NF-e';
+  if(/sped|e-sped/.test(t))return'SPED';
+  if(/boleto|pagamento|mensalidade|fatura|liberação|desbloqueio|bloqueado|pix/.test(t))return'Pagamento';
+  if(/instalação|reinstalação|formatação/.test(t))return'Instalação';
+  if(/atualização|versão|update/.test(t))return'Atualização';
+  if(/lentidão|lento|banco de dados/.test(t))return'Lentidão';
+  if(/impressora|etiqueta|driver|pin pad/.test(t))return'Hardware';
+  if(/servidor|rede|conexão/.test(t))return'Servidor';
+  if(/senha|login|usuário|permissão/.test(t))return'Acesso';
+  if(/configurar|configuração|parâmetro/.test(t))return'Configuração';
+  if(/treinamento|como fazer|como usar/.test(t))return'Treinamento';
+  if(/relatório|consulta/.test(t))return'Relatório';
+  return'Suporte geral';
+}
+function setStatus(m,t=''){const el=document.getElementById('status');el.textContent=m;el.className='sp'+(t?' '+t:'');}
+function updateSrcInfo(){
+  const kl=aKB&&aKB.length>10?'KB carregada':'Sem KB (opcional)';
+  document.getElementById('src-info').textContent=`${aData.length} conversas · ${kl}`;
+  document.getElementById('conv-cnt').textContent=`${aData.length} conversas`;
+}
+
+// ── CONV LIST ────────────────────────────────────────
+function buildList(){
+  const s=(document.getElementById('cl-srch').value||'').toLowerCase();
+  filtConvs=aData.filter(r=>!s||String(r.id).includes(s)||(r.assunto||'').toLowerCase().includes(s)||(r.motivo||'').toLowerCase().includes(s)).slice(0,1000);
+  const scroll=document.getElementById('cl-scroll');
+  scroll.innerHTML=filtConvs.map(r=>{
+    const on=selIds.has(r.id);
+    const res=simRes[r.id];
+    const dotColor=res?(res.verdict==='sim'?'#22c55e':'#ef4444'):'transparent';
+    const dotTitle=res?res.verdict:'';
+    return `<div class="ci-wrap${on?' sel':''}" data-id="${r.id}">
+      <div class="chk${on?' on':''}">${on?'<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><polyline points="2 6 5 9 10 3"/></svg>':''}</div>
+      <div class="ci-body">
+        <div class="ci-id"><span>#${r.id}</span>${res?`<div class="vdot" style="background:${dotColor}" title="${dotTitle}"></div>`:''}</div>
+        <div class="ci-as">${(r.assunto||'').slice(0,58)}</div>
+        <div class="ci-mo">${r.motivo||'—'}</div>
+      </div>
+    </div>`;
+  }).join('');
+  scroll.querySelectorAll('.ci-wrap').forEach(el=>{
+    el.addEventListener('click',()=>toggleSel(parseInt(el.dataset.id)));
+  });
+  updateSelUI();
+}
+
+function toggleSel(id){if(selIds.has(id))selIds.delete(id);else selIds.add(id);buildList();}
+function toggleAll(){
+  const allOn=filtConvs.every(r=>selIds.has(r.id));
+  if(allOn)filtConvs.forEach(r=>selIds.delete(r.id));
+  else filtConvs.forEach(r=>selIds.add(r.id));
+  buildList();
+}
+function updateSelUI(){
+  const n=selIds.size;
+  document.getElementById('sel-cnt').textContent=n+' selecionadas';
+  document.getElementById('btn-sim').disabled=n===0;
+  const allOn=filtConvs.length>0&&filtConvs.every(r=>selIds.has(r.id));
+  const ca=document.getElementById('chk-all');
+  ca.classList.toggle('on',allOn);
+  ca.innerHTML=allOn?'<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><polyline points="2 6 5 9 10 3"/></svg>':'';
+  if(n===0){document.getElementById('run-info').textContent='Selecione conversas para simular';}
+  else{const t=parseInt(document.getElementById('sl-t').value);const m=Math.round(n*t*0.02);document.getElementById('run-info').textContent=`${n} selecionada${n>1?'s':''} · ≈ ${m}–${m+3} min`;}
+}
+
+// ── THROTTLE ─────────────────────────────────────────
+const _throttle={queue:[],running:0,maxConcurrent:6,minInterval:120,lastCall:0};
+function throttledFetch(fn){
+  return new Promise((resolve,reject)=>{
+    _throttle.queue.push({fn,resolve,reject});
+    _drainThrottle();
+  });
+}
+function _drainThrottle(){
+  if(_throttle.running>=_throttle.maxConcurrent||_throttle.queue.length===0)return;
+  const now=Date.now();
+  const wait=Math.max(0,_throttle.minInterval-(now-_throttle.lastCall));
+  setTimeout(()=>{
+    if(_throttle.running>=_throttle.maxConcurrent||_throttle.queue.length===0)return;
+    const {fn,resolve,reject}=_throttle.queue.shift();
+    _throttle.running++;
+    _throttle.lastCall=Date.now();
+    fn().then(resolve,reject).finally(()=>{_throttle.running--;_drainThrottle();});
+    _drainThrottle();
+  },wait);
+}
+
+// ── API ───────────────────────────────────────────────
+const QWEN_URL='https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions';
+function getApiUrl(){return (document.getElementById('api-url').value.trim())||QWEN_URL;}
+function getApiModel(){return (document.getElementById('api-model').value.trim())||'qwen3.6-plus-2026-04-02';}
+function isCustomApi(){return getApiUrl()!==QWEN_URL;}
+
+async function api(messages,system,maxTok=350,attempt=0){
+  const key=getKey();
+  if(!key)throw new Error('Chave de API não configurada');
+  const url=getApiUrl();
+  const model=getApiModel();
+
+  let body;
+  if(isCustomApi()){
+    // Formato customizado: message + systemPrompt + history + productSlug
+    const allMsgs=system?[{role:'system',content:system},...messages]:[...messages];
+    // Monta body no formato exato da API Nexus:
+    // message  = última mensagem do usuário (input atual)
+    // history  = mensagens anteriores [{role:'user'|'assistant', content}]
+    // systemPrompt = prompt do agente configurado no Nexus
+    // productSlug  = '' (identificado internamente pela API)
+    const nonSystem=allMsgs.filter(m=>m.role!=='system');
+    const lastMsg=nonSystem.length>0?nonSystem[nonSystem.length-1].content:'';
+    const history=nonSystem.slice(0,-1).map(m=>({role:m.role==='assistant'?'assistant':'user',content:m.content}));
+    body={message:lastMsg,systemPrompt:system||'',productSlug:'',model,history};
+  } else {
+    // Formato padrão OpenAI
+    const msgs=system?[{role:'system',content:system},...messages]:[...messages];
+    body={model,max_tokens:maxTok,messages:msgs};
+  }
+
+  const isLocalhost=location.hostname==='localhost'||location.hostname==='127.0.0.1';
+  const fetchFn = isLocalhost && isCustomApi()
+    ? ()=>fetch('/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,auth:'Bearer '+key,rawBody:JSON.stringify(body)})})
+    : ()=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify(body)});
+  const r=await throttledFetch(fetchFn);
+  if(r.status===429||r.status===529){
+    if(attempt>=6) throw new Error('Rate limit persistente após 6 tentativas');
+    const wait=[2000,5000,10000,20000,30000,45000][attempt];
+    await new Promise(res=>setTimeout(res,wait));
+    return api(messages,system,maxTok,attempt+1);
+  }
+  if(r.status===500||r.status===503){
+    if(attempt>=2) throw new Error('Erro de servidor: '+r.status);
+    await new Promise(res=>setTimeout(res,5000));
+    return api(messages,system,maxTok,attempt+1);
+  }
+  if(!r.ok){
+    const t=await r.text();
+    let msg='HTTP '+r.status;
+    try{
+      const ej=JSON.parse(t);
+      msg=ej.error?.message||ej.message||ej.error||msg;
+    }catch{}
+    if(!msg||msg==='HTTP '+r.status) msg='HTTP '+r.status+' — '+t.slice(0,120);
+    throw new Error(msg);
+  }
+  const d=await r.json();
+  // Suporta formato OpenAI (choices) e formato customizado (response/content/message)
+  if(d.choices&&d.choices.length) return d.choices.map(c=>c.message?.content||'').join('').trim();
+  return (d.response||d.content||d.message||d.text||'').toString().trim();
+}
+
+// ── SIMULATE ONE ─────────────────────────────────────
+async function simOne(rec, onTurn){
+  const maxT = parseInt(document.getElementById('sl-t').value);
+  const agPrompt = getPrompt();
+  const kb = aKB;
+
+  // ── AGENT SYSTEM PROMPT ──────────────────────────────────────────────
+  const KB_MAX = 24000;
+  const kbTrunc = kb.length > KB_MAX ? kb.slice(0, KB_MAX) + '\n...[KB truncada]' : kb;
+  // KB é opcional — só inclui no prompt se estiver carregada
+  const kbSection = kb && kb.trim().length > 10 ? '\n\nBASE DE CONHECIMENTO:\n' + kbTrunc : '';
+
+  const agentRules = '\n\nREGRAS DE ATENDIMENTO:\n'
+    + '0. FOCO NA SOLUCAO: NUNCA peca CNPJ, AnyDesk, nome ou qualquer dado do cliente. Va DIRETO ao problema. Maximo 2 frases por mensagem.\n'
+    + '1. Use seu conhecimento para tentar resolver o problema. Passe os passos UM POR VEZ aguardando confirmacao a cada passo.\n'
+    + '2. NUNCA passe todos os passos de uma vez — um passo, espera, proximo passo.\n'
+    + '3. Pergunte "Conseguiu?" ou "Deu certo?" apos cada instrucao.\n'
+    + '4. Quando o cliente confirmar resolucao: encerre com "Que otimo! Atendimento encerrado!"\n'
+    + '5. Se nao conseguir resolver: diga APENAS "Vou abrir um chamado tecnico para voce." e ENCERRE — sem pedir mais nada.\n'
+    + '6. NUNCA encerre sem ter resolvido OU aberto chamado.\n'
+    + '7. PROIBIDO: NUNCA escreva tool calls, JSON ou funcoes. NUNCA peca CNPJ. Responda SOMENTE com fala de atendente ao telefone.\n'
+    + '8. DOIS PROBLEMAS: Trate um por vez. Tente resolver cada um antes de abrir chamado. Abra chamado somente para os que nao conseguir resolver.';
+
+  // Build pre-context with original client turns so agent can pre-match KB before conversation
+  const origLinesAgent = (rec.conv || '').split('\n').map(l=>l.trim()).filter(Boolean);
+  const origClientAgent = origLinesAgent
+    .filter(l=>l.startsWith('[CLIENTE]:'))
+    .map(l=>l.replace('[CLIENTE]:','').trim())
+    .slice(0,6).join(' | ');
+  const preContext = origClientAgent
+    ? '\n\nCONTEXTO PREVIO DO ATENDIMENTO (use para identificar artigos relevantes na KB antes de iniciar):\n'
+      + '"' + origClientAgent.slice(0,400) + '"\n'
+      + 'Ja identifique na KB qual artigo resolve esse problema ANTES de cumprimentar o cliente.'
+    : '';
+
+  const SYS_MAX = 40000; // limite total do system prompt
+  let sysAgent = (agPrompt
+    ? agPrompt.replace('{{KB}}', kbTrunc).replace('{{ASSUNTO}}', rec.assunto||'').replace('{{MOTIVO}}', rec.motivo||'') + agentRules
+    : 'Voce e um atendente de suporte tecnico.' + agentRules
+  ) + preContext + (kbSection && !(agPrompt && agPrompt.includes('{{KB}}')) ? kbSection : '');
+  if(sysAgent.length > SYS_MAX) sysAgent = sysAgent.slice(0, SYS_MAX);
+
+  // ── CLIENT CONTEXT ───────────────────────────────────────────────────
+  const origLines = (rec.conv || '').split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+  const origClient = origLines.filter(function(l){ return l.startsWith('[CLIENTE]:'); }).map(function(l){ return l.replace('[CLIENTE]:','').trim(); });
+  const origClientStr = origClient.slice(0,10).map(function(l,i){ return (i+1)+'. '+l; }).join('\n');
+
+  // Use custom client prompt if provided, otherwise use smart default
+  const customClientPrompt = getClientPrompt(rec);
+  const clientContext = customClientPrompt || (
+    'Voce e um cliente com o seguinte problema:\n'
+    + (rec.assunto || '') + '\n\n'
+    + 'FALAS ORIGINAIS DO CLIENTE (contexto do problema):\n'
+    + origClientStr + '\n\n'
+    + 'REGRAS:\n'
+    + '- Responda em 1-2 frases curtas\n'
+    + '- Quando o atendente der uma instrucao: execute e relate o resultado (funcionou ou nao)\n'
+    + '- So confirme resolucao APOS executar o passo e o atendente perguntar se funcionou\n'
+    + '- NUNCA peca para abrir chamado voce mesmo\n'
+    + '- NUNCA confirme resolucao antes de o atendente perguntar'
+  );
+
+  // ── STATE ────────────────────────────────────────────────────────────
+  const tx = [];
+  const aHist = [];
+  let clientHist = [];
+  function safePushClient(role, content){
+    // Anthropic requires alternating user/assistant
+    if(clientHist.length > 0 && clientHist[clientHist.length-1].role === role){
+      // Replace last message instead of double-pushing same role
+      clientHist[clientHist.length-1].content += '\n' + content;
+    } else {
+      clientHist.push({role:role, content:content});
+    }
+  }
+  let ticketOpened = false;
+  let resolvedByClient = false;
+  let agentStepCount = 0;     // how many instructional steps the agent gave
+  let agentAskedResult = false; // agent asked "deu certo?" / "conseguiu?"
+
+  // Agent gave a step (instructional, not just greeting/question)
+  const stepRx = /clique|acesse|abra|selecione|marque|desmarque|entre\s+no|va\s+ate|pressione|digite|informe|gere|execute|feche|abra|reinicie|desative|ative|confirme|salve/i;
+  // Agent asked if it worked
+  const askedResultRx = /deu\s+certo|conseguiu|funcionou|resolveu|apareceu|consegue\s+ver|esta\s+(funcionando|aparecendo|abrindo)|deu\s+resultado|ficou\s+(certo|ok)\?/i;
+  // Agent wrapped up (said it resolved)
+  const agentClosedRx = /que\s+[oó]timo|fico\s+feliz|fico\s+contente|problema\s+resolvido|ficou\s+resolvido|foi\s+resolvido|conseguimos\s+resolver|tudo\s+certo\s+ent[aã]o|atendimento\s+encerrado/i;
+  // Ticket detection
+  const ticketRx = /abrir(ei)?\s+(um\s+)?(chamado|ocorr[eê]ncia|ticket)|vou\s+(acionar|escalar|encaminhar|registrar)|t[eé]cnico\s+(ir[aá]|vai|entrar[aá])|fora\s+do\s+(meu|nosso)\s+(alcance|escopo|sistema)|n[aã]o\s+(consigo|posso|temos|tenho)\s+(resolver|ajudar|identificar)|anydesk|any\s*desk/i;
+
+  // Client confirmed resolution — valid when agent gave steps AND asked for result
+  const resolvedRx = /funcionou\s*(sim|!|\.)|deu\s+certo\s*(sim|!|\.)|resolveu\s*(sim|!|\.)|gerou\s*(sim|!|aqui|certo|ok|\.)|abriu\s+(certinho|certo|normal|ok)|foi\s+gerado\s*(sim|!)|salvou\s*(sim|!|\.)|imprimiu\s*(sim|!|\.)|emitiu\s*(certo|ok|sim|!)|t[aá]\s+funcionando\s*(sim|!|\.)|voltou\s+a\s+funcionar|consegui\s+(sim|!|acessar|emitir|abrir|gerar|fazer)|deu\s+(sim|certo|!)|apareceu\s+(sim|certo|normal|aqui|ok|!)|t[aá]\s+(ok|certo|bom|tudo\s+certo)|est[aá]\s+(ok|certo|funcionando|resolvido)|tudo\s+(ok|certo|bem|resolvido)|perfeito\s*[.!]?|resolvido\s*[.!]?/i;
+  // Simple ok confirmation for final check after agent closes
+  const okRx = /\bok\b|sim|certo|otimo|[oó]timo|obrigad|exato|isso|funcionou|deu\s+certo|t[aá]\s+ok|est[aá]\s+ok|tudo\s+(ok|certo|bem)|perfeito|resolvido/i;
+
+  // Greeting
+  const greeting = await api(
+    [{role:'user', content:'Inicie o atendimento. Cumprimente em UMA frase curta e pergunte diretamente qual e o problema — sem pedir dados de identificacao.'}],
+    sysAgent, 60
+  );
+  tx.push({role:'agent', text:greeting});
+  aHist.push({role:'user', content:'Inicie o atendimento.'}, {role:'assistant', content:greeting});
+  safePushClient('user', 'Atendente disse: "'+greeting+'"\nApresente-se e descreva seu problema.');
+  if(onTurn) onTurn({type:'agent', text:greeting});
+
+  for(let turn = 0; turn < maxT; turn++){
+
+    // ── CLIENT TURN ──────────────────────────────────────────────────
+    let cr = await api(clientHist, clientContext, 90);
+    cr = cr.replace(/\{[\s\S]*?["']name["']\s*:\s*["'][^"']*["'][\s\S]*?\}/g, '')
+           .replace(/\{[\s\S]*?["']type["']\s*:\s*["'][^"']*["'][\s\S]*?\}/g, '')
+           .replace(/\bconsultar_\w+\s*(\([^)]{0,200}\))?/g, '')
+           .replace(/\bbuscar_\w+\s*(\([^)]{0,200}\))?/g, '')
+           .replace(/\b\w+\s*\([^)]{0,200}\)\s*;?\n?/g, '')
+           .replace(/^[-*]\s+This is a (system|tool).*$/gm, '')
+           .replace(/^[-*]\s+(I need to|The transcript|Based on|My persona).*$/gm, '')
+           .replace(/`[^`]*`/g, '')
+           .replace(/\n{3,}/g, '\n').trim();
+    if(!cr) cr = 'Sim.';
+    tx.push({role:'client', text:cr});
+    safePushClient('assistant', cr);
+    aHist.push({role:'user', content:cr});
+    if(onTurn) onTurn({type:'client', text:cr});
+
+    // Only check resolution if:
+    // - At least 2 full turns happened (agent gave real instructions)
+    // - Agent gave at least 1 step
+    // - Agent asked if it worked (or agent closed positively)
+    // - The reply is a short positive confirmation (not embedded in longer text)
+    if(turn >= 2 && agentStepCount >= 1 && agentAskedResult){
+      const crTrimmed = cr.trim();
+      // Short reply (< 120 chars) with strong resolution phrase
+      if(crTrimmed.length < 120 && resolvedRx.test(crTrimmed)){
+        resolvedByClient = true;
+        break;
+      }
+    }
+
+    // ── AGENT TURN ───────────────────────────────────────────────────
+    // Ensure aHist slice always starts with 'user' role (Anthropic requirement)
+    let aHistSlice = aHist.slice(-8);
+    if(aHistSlice.length > 0 && aHistSlice[0].role !== 'user'){
+      aHistSlice = aHistSlice.slice(1);
+    }
+    let ar = await api(aHistSlice, sysAgent, 280);
+    // Remove tool call syntax (function(), JSON objects, markdown reasoning)
+    ar = ar.replace(/\{[\s\S]*?["']name["']\s*:\s*["'][^"']*["'][\s\S]*?\}/g, '')  // {"name":"tool"} or {'name':'tool'}
+           .replace(/\{[\s\S]*?["']type["']\s*:\s*["'][^"']*["'][\s\S]*?\}/g, '')  // {"type":"tool_use"}
+           .replace(/\bconsultar_\w+\s*(\([^)]{0,200}\))?/g, '')                   // consultar_xxx(...)
+           .replace(/\bbuscar_\w+\s*(\([^)]{0,200}\))?/g, '')                      // buscar_xxx(...)
+           .replace(/\b\w+\s*\([^)]{0,200}\)\s*;?\n?/g, '')                        // func(args)
+           .replace(/^[-*]\s+This is a system.*$/gm, '')                            // reasoning comments
+           .replace(/^[-*]\s+I need to.*$/gm, '')
+           .replace(/^[-*]\s+The transcript.*$/gm, '')
+           .replace(/`[^`]*`/g, '')                                                 // backtick blocks
+           .replace(/\n{3,}/g, '\n').trim();
+    if(!ar) ar = 'Certo, um momento.';
+    tx.push({role:'agent', text:ar});
+    aHist.push({role:'assistant', content:ar});
+    if(onTurn) onTurn({type:'agent', text:ar});
+
+    // Track agent behavior
+    if(stepRx.test(ar)) agentStepCount++;
+    if(askedResultRx.test(ar)) agentAskedResult = true;
+
+    // Ticket opened?
+    if(ticketRx.test(ar)){
+      ticketOpened = true;
+      safePushClient('user', 'Atendente disse: "'+ar.slice(0,200)+'"\nEle vai abrir chamado. Responda resignado brevemente.');
+      const fr = await api(clientHist, clientContext, 50);
+      tx.push({role:'client', text:fr});
+      if(onTurn) onTurn({type:'client', text:fr});
+      break;
+    }
+
+    // Agent closed positively?
+    if(agentClosedRx.test(ar) && agentStepCount >= 1){
+      // Let client give final word
+      safePushClient('user', 'Atendente disse: "'+ar+'"\nO problema foi resolvido? Confirme brevemente.');
+      const fc = await api(clientHist, clientContext, 80);
+      tx.push({role:'client', text:fc});
+      if(onTurn) onTurn({type:'client', text:fc});
+      // Positive final confirmation → resolved
+      if(resolvedRx.test(fc) || okRx.test(fc)){
+        resolvedByClient = true;
+      }
+      break;
+    }
+
+    safePushClient('user', 'Atendente disse: "'+ar+'"\nReaja: se deu instrucao, tente e relate. Se pediu dado, forneca. NAO confirme resolucao antes de o atendente perguntar se funcionou.');
+  }
+
+  // ── VERDICT ──────────────────────────────────────────────────────────
+  let verdict, reason;
+
+  if(resolvedByClient){
+    verdict = 'sim';
+    reason = 'Cliente confirmou resolucao apos seguir os passos da KB';
+  } else if(ticketOpened){
+    verdict = 'nao';
+    reason = 'Chamado aberto — problema nao resolvido pela base de conhecimento';
+  } else {
+    // Judge for ambiguous cases
+    const txStr = tx.map(function(t){ return '['+(t.role==='agent'?'IA':'CLIENTE')+']: '+t.text; }).join('\n');
+    const txSafe = txStr.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'');
+    const judgeQ = 'Analise esta conversa de suporte.\n\n'
+      + 'Problema: ' + (rec.assunto||'') + '\n\n'
+      + 'CONVERSA:\n' + txSafe.slice(0,4000) + '\n\n'
+      + 'Responda SOMENTE JSON: {"resolvivel":"sim"|"nao","motivo":"1 frase"}\n\n'
+      + '- "sim": agente passou passos concretos da KB E cliente sinalizou que funcionou\n'
+      + '- "nao": agente nao resolveu, cliente nao confirmou, chamado aberto, ou conversa incompleta';
+    const jRaw = await api([{role:'user', content:judgeQ}], null, 90);
+    try{
+      const p = JSON.parse(jRaw.replace(/```json|```/g,'').trim());
+      verdict = (p.resolvivel==='sim') ? 'sim' : 'nao';
+      reason = p.motivo || '';
+    } catch {
+      verdict = 'nao';
+      reason = 'Erro ao avaliar';
+    }
+  }
+
+  return {transcript:tx, verdict:verdict, reason:reason, ticketOpened:ticketOpened};
+}
+
+// ── CARDS ─────────────────────────────────────────────
+function mkCard(rec){
+  const el=document.createElement('div');
+  el.className='sc';el.id=`sc-${rec.id}`;
+  el.innerHTML=`<div class="sc-h"><span class="sc-id">#${rec.id}</span><span class="sc-mo">${rec.motivo||'—'}</span></div><div class="sc-ass">${(rec.assunto||'').slice(0,90)}</div><div class="sc-body"><div class="sc-prog"><div class="spin"></div><span>Simulando...</span></div></div>`;
+  return el;
+}
+function addBubble(cardEl,type,text){
+  const body=cardEl.querySelector('.sc-body');
+  if(!body)return;
+  const prog=body.querySelector('.sc-prog');if(prog)prog.remove();
+  const d=document.createElement('div');
+  d.className=`bw ${type==='client'?'cl':'ag'}`;
+  d.innerHTML=`<span class="bl">${type==='client'?'Cliente':'IA'}</span><div class="bb ${type==='client'?'cl':'ai'}">${text}</div>`;
+  body.appendChild(d);body.scrollTop=9999;
+}
+function finishCard(cardEl,verdict,reason,transcript,rec){
+  const body=cardEl.querySelector('.sc-body');
+  const prog=body.querySelector('.sc-prog');if(prog)prog.remove();
+  const vd=document.createElement('div');
+  const vc=verdict==='sim'?'vd-sim':'vd-nao';
+  const vl=verdict==='sim'?'✓ Resolvido pela KB':'✗ Não resolvido — chamado necessário';
+  vd.className=`sc-verd ${vc}`;
+  vd.textContent=`${vl}${reason?' — '+reason:''}`;
+  cardEl.appendChild(vd);
+  // Keywords only when KB actually resolved
+  if(verdict==='sim'&&transcript&&transcript.length){
+    addKeywordsMenu(cardEl,transcript,rec,verdict);
+  }
+}
+
+async function addKeywordsMenu(cardEl, transcript, rec, verdict){
+  const menu = document.createElement('div');
+  menu.className = 'kw-menu';
+  const chevron = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
+  menu.innerHTML = '<button class="kw-toggle" onclick="this.classList.toggle(\'open\');this.nextElementSibling.classList.toggle(\'open\')">📝 Palavras-chave para melhoria da KB ' + chevron + '</button><div class="kw-body"><div class="kw-loading"><div class="spin" style="width:11px;height:11px;border-width:1.5px"></div>Extraindo palavras-chave...</div></div>';
+  cardEl.appendChild(menu);
+  const kwBody = menu.querySelector('.kw-body');
+  try {
+    const txText = transcript.map(t=>'[' + (t.role==='agent'?'IA':'CLIENTE') + ']: ' + t.text).join('\n');
+    const kwPrompt = 'Analise esta conversa de suporte e extraia informacoes para melhorar uma base de conhecimento.\n\nAssunto: ' + (rec.assunto||'') + '\nMotivo: ' + (rec.motivo||'—') + '\nResultado: ' + (verdict==='sim'?'Resolvido':'Parcialmente resolvido') + '\n\nCONVERSA:\n' + txText.slice(0,3000) + '\n\nIdentifique os PASSOS da conversa onde houve interacao relevante. Para cada passo extraia palavras-chave e uma sugestao de melhoria para a base de conhecimento.\n\nResponda SOMENTE em JSON valido:\n{\n  "passos": [\n    {\n      "numero": 1,\n      "descricao": "descricao breve do passo (max 55 chars)",\n      "palavras_chave": ["kw1", "kw2", "kw3"],\n      "sugestao_kb": "sugestao em 1 frase de como melhorar a KB para este passo"\n    }\n  ]\n}\n\nMaximo 5 passos. Palavras-chave: termos tecnicos, funcionalidades, erros, acoes relevantes.';
+    const raw = await api([{role:'user',content:kwPrompt}],null,600);
+    const parsed = JSON.parse(raw.replace(/```json|```/g,'').trim());
+    const passos = parsed.passos||[];
+    if(!passos.length){ kwBody.innerHTML='<div style="font-size:11px;color:#9d94c8">Nenhum passo extraído.</div>'; return; }
+    kwBody.innerHTML = passos.map(function(p,i){
+      const tags = (p.palavras_chave||[]).map(function(k){ return '<span class="kw-tag">'+k+'</span>'; }).join('');
+      const sug = p.sugestao_kb ? '<div class="kw-step-text">→ '+p.sugestao_kb+'</div>' : '';
+      return '<div class="kw-step"><div class="kw-step-label">Passo '+(p.numero||i+1)+' — '+(p.descricao||'')+'</div><div class="kw-tags">'+tags+'</div>'+sug+'</div>';
+    }).join('');
+    if(rec&&rec.id&&simRes[rec.id]) simRes[rec.id].keywords=passos;
+  } catch(e){
+    kwBody.innerHTML='<div style="font-size:11px;color:#f87171">Erro: '+e.message.slice(0,60)+'</div>';
+  }
+}
+
+
+// ── RUN ───────────────────────────────────────────────
+async function runSims(){
+  if(!getKey()){alert('Configure a chave de API na aba Configurar.');return;}
+  if(aData.length===0){alert('Carregue um arquivo de conversas na aba Dados antes de simular.');return;}
+  if(selIds.size===0)return;
+  const toSim=aData.filter(r=>selIds.has(r.id));
+  const conc=parseInt(document.getElementById('sl-c').value);
+
+  // Show conversas tab
+  document.querySelectorAll('.rtab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.rtab-c').forEach(c=>c.classList.remove('active'));
+  document.querySelector('[data-tab="conversas"]').classList.add('active');
+  document.getElementById('rtab-conversas').classList.add('active');
+
+  const grid=document.getElementById('scg');
+  const ph=grid.querySelector('.empty');if(ph)ph.remove();
+
+  const cards={};
+  toSim.forEach(rec=>{
+    let el=document.getElementById(`sc-${rec.id}`);
+    if(el){el.querySelector('.sc-body').innerHTML='<div class="sc-prog"><div class="spin"></div><span>Simulando...</span></div>';const ov=el.querySelector('.sc-verd');if(ov)ov.remove();}
+    else{el=mkCard(rec);grid.appendChild(el);}
+    cards[rec.id]=el;
+  });
+
+  document.getElementById('btn-sim').disabled=true;
+  document.getElementById('btn-sim').innerHTML='<div class="spin" style="width:12px;height:12px;border-width:2px"></div> Simulando...';
+  setStatus(`Simulando ${toSim.length}...`,'run');
+
+  let idx=0;
+  let stopFlag=false;
+  async function worker(){
+    while(idx<toSim.length&&!stopFlag){
+      const cur=idx++,rec=toSim[cur],cardEl=cards[rec.id];
+      const prog=cardEl.querySelector('.sc-prog');if(prog)prog.remove();
+      try{
+        const res=await simOne(rec,turn=>addBubble(cardEl,turn.type,turn.text));
+        simRes[rec.id]={...rec,verdict:res.verdict,reason:res.reason,turns:res.transcript.length,ticketOpened:res.ticketOpened||false};
+        saveSimRes();
+        finishCard(cardEl,res.verdict,res.reason,res.transcript,rec);
+      }catch(e){
+        const msg=e.message||'Erro desconhecido';
+        const isApiErr=/HTTP\s+4\d\d|credit|balance|quota|rate.?limit|invalid.*key|unauthorized|forbidden|free.?tier|exhausted/i.test(msg);
+        if(isApiErr){
+          // API/billing error — stop everything, show clearly
+          const body=cardEl.querySelector('.sc-body');
+          if(body){const prog=body.querySelector('.sc-prog');if(prog)prog.remove();}
+          const vd=document.createElement('div');
+          vd.className='sc-verd vd-err';
+          vd.innerHTML='⚠ Erro de API — <b>'+msg.slice(0,120)+'</b>';
+          cardEl.appendChild(vd);
+          // Do NOT count as 'nao' in charts — mark as error
+          simRes[rec.id]={...rec,verdict:'erro',reason:msg,turns:0};saveSimRes();
+          // Stop all workers if it's a billing/auth issue
+          if(/credit|balance|quota|invalid.*key|unauthorized|forbidden|free.?tier|exhausted/i.test(msg)){
+            stopFlag=true;
+            setStatus('Simulação interrompida: '+msg.slice(0,60),'');
+          }
+        } else {
+          simRes[rec.id]={...rec,verdict:'nao',reason:msg,turns:0};saveSimRes();
+          finishCard(cardEl,'nao',msg.slice(0,80));
+        }
+      }
+      buildList();
+      updateCharts();
+    }
+  }
+  await Promise.all(Array.from({length:conc},worker));
+
+  document.getElementById('btn-sim').disabled=false;
+  document.getElementById('btn-sim').innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Simular selecionadas';
+  setStatus(`${Object.keys(simRes).length} simulações concluídas`,'done');
+  document.getElementById('btn-exp').style.display='inline-flex';
+  const b=document.getElementById('res-badge');b.style.display='inline';b.textContent=Object.keys(simRes).length;
+}
+
+// ── CHARTS ────────────────────────────────────────────
+function updateCharts(){
+  const all=Object.values(simRes).filter(function(r){return r.verdict!=='erro';});
+  const sim=all.filter(r=>r.verdict==='sim').length;
+  const nao=all.filter(r=>r.verdict==='nao').length;
+  const tot=all.length;if(!tot)return;
+
+  // Update result tab numbers
+  document.getElementById('res-body').style.display='flex';
+  document.getElementById('res-empty').style.display='none';
+  document.getElementById('rs-sim').textContent=Math.round(sim/tot*100)+'%';
+  document.getElementById('rs-par').textContent='—';
+  document.getElementById('rs-nao').textContent=Math.round(nao/tot*100)+'%';
+  document.getElementById('rs-tot').textContent=tot;
+  document.getElementById('rs-sim-n').textContent=sim+' resolvidas pela KB';
+  document.getElementById('rs-par-n').textContent='Eliminado — agora é Não resolvido';
+  document.getElementById('rs-nao-n').textContent=nao+' abriram chamado';
+
+  // Update resultados gerais
+  document.getElementById('rg-body').style.display='flex';
+  document.getElementById('rg-empty').style.display='none';
+  document.getElementById('rg-sim').textContent=Math.round(sim/tot*100)+'%';
+  document.getElementById('rg-par').textContent='—';
+  document.getElementById('rg-nao').textContent=Math.round(nao/tot*100)+'%';
+  document.getElementById('rg-tot').textContent=tot;
+  document.getElementById('rg-sim-n').textContent=sim+' resolvidas pela KB';
+  document.getElementById('rg-par-n').textContent='Eliminado — agora é Não resolvido';
+  document.getElementById('rg-nao-n').textContent=nao+' abriram chamado';
+
+  Chart.defaults.color='#666';Chart.defaults.borderColor='#2e2e2e';
+
+  const byM={};
+  all.filter(function(r){return r.verdict!=='erro';}).forEach(function(r){const m=r.motivo||'Outros';if(!byM[m])byM[m]={s:0,n:0,t:0};byM[m][r.verdict==='sim'?'s':'n']++;byM[m].t++;});
+  const sorted=Object.entries(byM).sort((a,b)=>b[1].t-a[1].t);
+  const labs=sorted.map(([m])=>m);
+  const pcts=sorted.map(([,v])=>v.t>0?Math.round(v.s/v.t*100):0);
+  const cols=pcts.map(p=>p>=50?'#22c55e':'#ef4444');
+  const simD=sorted.map(function(e){return e[1].s;}),naoD=sorted.map(function(e){return e[1].n;});
+
+  function mkDonut(id,ref){
+    if(!ref){ref=new Chart(document.getElementById(id),{type:'doughnut',data:{labels:['Resolvível pela KB','Não resolvido / Chamado'],datasets:[{data:[sim,nao],backgroundColor:['#22c55e','#ef4444'],borderWidth:0,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#a0a0a0',font:{family:'Inter',size:11},padding:12,boxWidth:10}},tooltip:{callbacks:{label:function(ctx){return ' '+ctx.label+': '+ctx.parsed+' ('+Math.round(ctx.parsed/(sim+nao)*100)+'%)';}}}}}});}
+    else{ref.data.datasets[0].data=[sim,nao];ref.update('none');}
+    return ref;
+  }
+  function mkBar(id,ref){
+    if(!ref){ref=new Chart(document.getElementById(id),{type:'bar',data:{labels:labs,datasets:[{label:'% Resolvível',data:pcts,backgroundColor:cols,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#666',font:{family:'Inter',size:10},maxRotation:50},grid:{color:'#1e1e1e'}},y:{min:0,max:100,ticks:{callback:v=>v+'%',color:'#666',font:{family:'Inter',size:10}},grid:{color:'#1e1e1e'}}}}});}
+    else{ref.data.labels=labs;ref.data.datasets[0].data=pcts;ref.data.datasets[0].backgroundColor=cols;ref.update('none');}
+    return ref;
+  }
+  function mkStack(id,ref){
+    if(!ref){ref=new Chart(document.getElementById(id),{type:'bar',data:{labels:labs,datasets:[{label:'Resolvível pela KB',data:simD,backgroundColor:'#22c55e'},{label:'Não resolvido / Chamado',data:naoD,backgroundColor:'#ef4444'}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{position:'bottom',labels:{color:'#a0a0a0',font:{family:'Inter',size:11},padding:12,boxWidth:10}}},scales:{x:{stacked:true,ticks:{color:'#666',font:{family:'Inter',size:10}},grid:{color:'#1e1e1e'}},y:{stacked:true,ticks:{color:'#999',font:{family:'Inter',size:11}},grid:{display:false}}}}});}
+    else{ref.data.labels=labs;ref.data.datasets[0].data=simD;ref.data.datasets[1].data=naoD;ref.update('none');}
+    return ref;
+  }
+
+  cDonut=mkDonut('c-donut',cDonut);cBar=mkBar('c-bar',cBar);cStack=mkStack('c-stack',cStack);
+  rgDonut=mkDonut('rg-donut',rgDonut);rgBar=mkBar('rg-bar',rgBar);rgStack=mkStack('rg-stack',rgStack);
+
+  const tblHtml=sorted.map(([m,v])=>{
+    const pct=v.t>0?Math.round(v.s/v.t*100):0;
+    const col=pct>=50?'#22c55e':'#ef4444';
+    return `<tr><td style="font-weight:500">${m}</td><td style="text-align:center;font-family:monospace;color:var(--muted)">${v.t}</td><td style="text-align:center"><span class="bdg b-sim">${v.s}</span></td><td style="text-align:center"><span class="bdg b-nao">${v.n}</span></td><td style="text-align:center;font-family:monospace;font-weight:700;color:${col}">${pct}%</td><td><div class="mb"><div class="mf" style="width:${pct}%;background:${col}"></div></div></td></tr>`;
+  }).join('');
+  document.getElementById('res-tbl').innerHTML=tblHtml;
+  document.getElementById('rg-tbl').innerHTML=tblHtml;
+  renderSamples('all');
+}
+
+function renderSamples(f){
+  const all=Object.values(simRes);
+  const fi=all.filter(r=>f==='all'||r.verdict===f).slice(-60).reverse();
+  const bc={sim:'b-sim',nao:'b-nao',erro:'b-nao'},bl={sim:'Resolvível pela KB',nao:'Não resolvido',erro:'⚠ Erro API'};
+  const html=fi.map(r=>`<div class="si"><div><span class="bdg ${bc[r.verdict]||'b-nao'}">${bl[r.verdict]||r.verdict}</span></div><div><div class="si-id">#${r.id} · ${r.motivo||'—'}</div><div class="si-as">${(r.assunto||'').slice(0,100)}</div><div class="si-rs">${(r.reason||'').slice(0,120)}</div></div></div>`).join('');
+  ['res-slist'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=html;});
+}
+
+// ── DATA ─────────────────────────────────────────────
+async function loadKB(file){
+  if(!file)return;
+  let c=await file.text();
+  if(file.name.endsWith('.json')){try{const a=JSON.parse(c);c=a.map(x=>typeof x==='string'?x:(x.content||x.text||JSON.stringify(x))).join('\n\n---\n\n');}catch{}}
+  aKB=c;
+  const arts=(c.match(/^##/gm)||[]).length;
+  document.getElementById('dz-kb').classList.add('ok');
+  const ok=document.getElementById('kb-ok');ok.style.display='block';ok.textContent=`✓ ${file.name} · ${Math.round(c.length/1000)}k chars${arts>0?' · '+arts+' artigos':''}`;
+  const b=document.getElementById('kb-badge');b.className='sb cus';b.style='';b.innerHTML=`<div class="sb-d"></div>KB carregada — ${file.name}`;
+  updateSrcInfo();
+}
+function resetKB(){
+  aKB='';
+  document.getElementById('dz-kb').classList.remove('ok');
+  const ok=document.getElementById('kb-ok');ok.style.display='none';ok.textContent='';
+  const b=document.getElementById('kb-badge');b.className='sb def';b.style='border-color:rgba(239,68,68,.2);color:#fca5a5';b.innerHTML='<div class="sb-d" style="background:var(--red)"></div>Nenhuma KB carregada — arraste um arquivo .txt, .md ou .json';
+  updateSrcInfo();}
+async function loadConv(file,mode){
+  if(!file)return;
+  try{
+    const parsed=JSON.parse(await file.text());
+    if(!Array.isArray(parsed)){alert('JSON precisa ser um array.');return;}
+    const norm=parsed.map((r,i)=>{
+      const rawConv=r.conv||r.transcricao||'';
+      let assunto=r.assunto||r.assunto_principal||'';
+      let cnpj='';
+      let conv=rawConv; // default: keep as-is
+
+      if(rawConv){
+        try{
+          const inner=JSON.parse(rawConv.replace(/^```json\n?/,'').replace(/\n?```$/,''));
+          const turns=(inner.transcricao||inner||[]);
+          if(Array.isArray(turns)){
+            // Format turns as readable text lines
+            conv=turns.map(t=>{
+              const prefix=t.papel==='cliente'?'[CLIENTE]':'[ATENDENTE]';
+              return prefix+': '+(t.fala||'');
+            }).join('\n');
+            // Extract CNPJ from all falas
+            const allText=turns.map(t=>t.fala||'').join(' ');
+            const cnpjM=allText.match(/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/);
+            if(cnpjM)cnpj=cnpjM[0];
+            // Extract assunto from client falas
+            if(!assunto){
+              const clientFalas=turns.filter(t=>t.papel==='cliente'&&t.fala&&t.fala.length>20).map(t=>t.fala);
+              const falas=clientFalas.slice(1,4);
+              if(falas.length)assunto=falas.join(' ').slice(0,300);
+              else if(clientFalas.length)assunto=clientFalas[0].slice(0,300);
+            }
+          }
+        }catch(e){
+          // fallback: extract via regex
+          if(!assunto){
+            const matches=[...rawConv.matchAll(/"papel"\s*:\s*"cliente"\s*,\s*"fala"\s*:\s*"([^"]{20,})"/g)];
+            const falas=matches.slice(1,4).map(m=>m[1]);
+            if(falas.length)assunto=falas.join(' ').slice(0,300);
+          }
+          const cnpjM=rawConv.match(/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/);
+          if(cnpjM)cnpj=cnpjM[0];
+        }
+      }
+      const motivo=r.motivo||getMotivo(assunto,rawConv);
+      return {id:r.id||i+1,lote:r.lote||99,assunto,conv,cnpj,motivo,sentimento:r.sentimento||'',total_falas:r.total_falas||0};
+    });
+    if(mode==='replace'){
+      aData=norm;
+      document.getElementById('dz-rep').classList.add('ok');
+      const ok=document.getElementById('rep-ok');ok.style.display='block';ok.textContent=`✓ ${file.name} · ${norm.length} conversas`;
+      const b=document.getElementById('conv-badge');b.className='sb cus';b.style='';b.innerHTML=`<div class="sb-d"></div>${norm.length} conversas carregadas — ${file.name}`;
+    } else {
+      const ids=new Set(aData.map(r=>r.id));
+      const added=norm.filter(r=>!ids.has(r.id));
+      aData=[...aData,...added];
+      document.getElementById('dz-add').classList.add('ok');
+      const ok=document.getElementById('add-ok');ok.style.display='block';ok.textContent=`✓ +${added.length} de ${file.name}`;
+      const b=document.getElementById('conv-badge');b.className='sb cus';b.style='';b.innerHTML=`<div class="sb-d"></div>${aData.length} conversas carregadas (${added.length} adicionadas)`;
+    }
+    selIds.clear();updateSrcInfo();buildList();
+  }catch(e){alert('Erro ao ler JSON: '+e.message);}
+}
+function resetConv(){
+  aData=[];
+  ['dz-rep','dz-add'].forEach(id=>document.getElementById(id).classList.remove('ok'));
+  ['rep-ok','add-ok'].forEach(id=>{const el=document.getElementById(id);el.style.display='none';el.textContent='';});
+  const b=document.getElementById('conv-badge');b.className='sb def';b.style='border-color:rgba(239,68,68,.2);color:#fca5a5';b.innerHTML='<div class="sb-d" style="background:var(--red)"></div>Nenhuma conversa carregada — arraste um arquivo .json';
+  selIds.clear();updateSrcInfo();buildList();
+}
+
+function exportJ(){
+  const blob=new Blob([JSON.stringify(Object.values(simRes),null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='simulacoes.json';a.click();URL.revokeObjectURL(url);
+}
+
+// INIT
+buildList();
+updateSrcInfo();
+// Restaura resultados salvos
+if(Object.keys(simRes).length>0){
+  updateCharts();
+  document.getElementById('btn-exp').style.display='inline-flex';
+  const b=document.getElementById('res-badge');b.style.display='inline';b.textContent=Object.keys(simRes).length;
+}
+</script>
+</body>
+</html>

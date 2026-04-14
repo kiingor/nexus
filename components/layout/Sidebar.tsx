@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutGrid, FlaskConical, Download, LogOut, BookOpen, ChevronRight } from 'lucide-react';
+import { LayoutGrid, FlaskConical, Download, LogOut, BookOpen, ChevronRight, Sparkles, MessageSquare } from 'lucide-react';
 import { getSupabaseClient as createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/ui/Toast';
 
@@ -13,6 +13,8 @@ interface SidebarProps {
 const navItems = [
   { href: '/', label: 'Produtos', icon: LayoutGrid, exact: true },
   { href: '/test', label: 'Testar', icon: FlaskConical, exact: false },
+  { href: '/chats', label: 'Chats', icon: MessageSquare, exact: false },
+  { href: '/learn', label: 'Aprender', icon: Sparkles, exact: false },
   { href: '/export', label: 'Exportar', icon: Download, exact: false },
 ];
 

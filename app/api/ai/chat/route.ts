@@ -98,8 +98,9 @@ export async function POST(request: NextRequest) {
     }
 
     const selectedModel = model || 'gpt-4.1-mini'
-    const isFineTuned = process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL
-      && selectedModel === process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL
+    const isFineTuned =
+      (process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL && selectedModel === process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL) ||
+      (process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL_V2 && selectedModel === process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL_V2)
 
     const supabase = createServerClient()
 
@@ -139,6 +140,18 @@ export async function POST(request: NextRequest) {
       if (!rpcError && matches && matches.length > 0) {
         knowledgeContext = buildRAGContext(matches)
         usedRAG = true
+      } else if (productId) {
+        // No results for this product — try global search
+        const { data: globalMatches, error: globalErr } = await supabase.rpc('match_documents_openai', {
+          query_embedding: JSON.stringify(queryEmbedding),
+          match_threshold: 0.65,
+          match_count: 10,
+          filter_product_id: null,
+        })
+        if (!globalErr && globalMatches && globalMatches.length > 0) {
+          knowledgeContext = buildRAGContext(globalMatches)
+          usedRAG = true
+        }
       }
     } catch (ragError) {
       console.warn('RAG search failed, falling back to full context:', ragError)
@@ -148,12 +161,21 @@ export async function POST(request: NextRequest) {
     if (!usedRAG) {
       let items
       if (productId) {
-        const { data } = await supabase
+        const { data: productItems } = await supabase
           .from('knowledge_items')
           .select('*, modules!inner(product_id, name)')
           .eq('modules.product_id', productId)
           .eq('is_active', true)
-        items = data
+        // If product has no items, fall back to all products
+        if (productItems && productItems.length > 0) {
+          items = productItems
+        } else {
+          const { data: allItems } = await supabase
+            .from('knowledge_items')
+            .select('*, modules!inner(name)')
+            .eq('is_active', true)
+          items = allItems
+        }
       } else {
         const { data } = await supabase
           .from('knowledge_items')
@@ -170,17 +192,37 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // --- Resolve product list for context (when no product filter) ---
+    let productListHint = ''
+    if (!productId) {
+      const { data: products } = await supabase
+        .from('products')
+        .select('name')
+        .order('name')
+      if (products && products.length > 1) {
+        productListHint = `\nProdutos disponíveis: ${products.map(p => p.name).join(', ')}.`
+      }
+    }
+
     // --- Build system prompt ---
     let systemPrompt: string
 
+    const productGuard = productListHint
+      ? `\n\nREGRA OBRIGATÓRIA: NUNCA presuma qual produto o cliente usa. Se o cliente não mencionou EXPLICITAMENTE o nome do produto nesta conversa, pergunte de forma clara e objetiva qual sistema ele utiliza, listando as opções: ${productListHint.replace('\nProdutos disponíveis: ', '').replace('.', '')}. Só responda a dúvida depois que o cliente confirmar o produto. Se a resposta do cliente for vaga (ex: "o que uso no navegador", "o sistema da empresa"), insista gentilmente pedindo o nome exato do produto.`
+      : ''
+
     if (isFineTuned) {
-      // Fine-tuned model: lighter prompt, RAG as boost
       systemPrompt = knowledgeContext
-        ? `Você é um assistente de suporte especializado em ${contextName}.\nResponda com base no seu conhecimento. Use o contexto adicional abaixo se relevante.\nSe não souber a resposta, diga claramente.\n\nCONTEXTO ADICIONAL:\n${knowledgeContext}`
-        : `Você é um assistente de suporte especializado em ${contextName}.\nResponda com base no seu conhecimento. Se não souber a resposta, diga claramente.`
+        ? `Você é um assistente de suporte especializado em ${contextName}.${productGuard}
+Responda com base no seu conhecimento. Use o contexto adicional abaixo se relevante.
+Se não souber a resposta, diga claramente.
+
+CONTEXTO ADICIONAL:
+${knowledgeContext}`
+        : `Você é um assistente de suporte especializado em ${contextName}.${productGuard}
+Responda com base no seu conhecimento. Se não souber a resposta, diga claramente.`
     } else {
-      // Standard model: full context injection
-      systemPrompt = `Você é um assistente de suporte com acesso a ${contextName}.
+      systemPrompt = `Você é um assistente de suporte com acesso a ${contextName}.${productGuard}
 Responda APENAS com base no conhecimento fornecido abaixo.
 Se não souber a resposta ou se ela não estiver na base de conhecimento, diga claramente que não encontrou essa informação na base.
 Seja objetivo e direto nas respostas.
@@ -210,6 +252,7 @@ ${knowledgeContext}`
     const response = await openai.chat.completions.create({
       model: selectedModel,
       max_tokens: 2048,
+      temperature: isFineTuned ? 0.3 : undefined,
       messages,
     })
 

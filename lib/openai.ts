@@ -19,7 +19,14 @@ export const OPENAI_MODELS: Array<{ id: string; label: string; provider: string 
   { id: 'gpt-4.1', label: 'GPT-4.1', provider: 'openai' },
 ]
 
-// Add fine-tuned model if configured
+// Add fine-tuned models if configured
+if (process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL_V2) {
+  OPENAI_MODELS.unshift({
+    id: process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL_V2,
+    label: 'Nexus AI V2',
+    provider: 'openai',
+  })
+}
 if (process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL) {
   OPENAI_MODELS.unshift({
     id: process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL,

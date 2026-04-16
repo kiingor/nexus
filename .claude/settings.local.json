@@ -15,7 +15,11 @@
       "Bash(awk '{print $2}')",
       "Bash(xargs kill:*)",
       "Bash(rm -rf .next)",
-      "Bash(supabase status:*)"
+      "Bash(supabase status:*)",
+      "Bash(git push:*)",
+      "Bash(gh auth:*)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

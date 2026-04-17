@@ -84,7 +84,6 @@ export default function SimulatePage() {
   const [customApiUrl, setCustomApiUrl] = useState('')
   const [concurrency, setConcurrency] = useState(5)
   const [maxTurns, setMaxTurns] = useState(8)
-  const [agentPrompt, setAgentPrompt] = useState('')
   const [clientPrompt, setClientPrompt] = useState('')
   const [kbContent, setKbContent] = useState('')
   const [kbFileName, setKbFileName] = useState('')
@@ -146,8 +145,6 @@ export default function SimulatePage() {
     if (savedKey) setApiKey(savedKey)
     const savedModel = localStorage.getItem('nexus_sim_api_model')
     if (savedModel) setApiModel(savedModel)
-    const savedPrompt = localStorage.getItem('nexus_sim_agent_prompt')
-    if (savedPrompt) setAgentPrompt(savedPrompt)
     const savedClientPrompt = localStorage.getItem('nexus_sim_client_prompt')
     if (savedClientPrompt) setClientPrompt(savedClientPrompt)
     const savedResults = localStorage.getItem('nexus_sim_results')
@@ -299,7 +296,6 @@ export default function SimulatePage() {
         }
       }
 
-      const sysPrompt = localStorage.getItem('nexus_sim_agent_prompt') || ''
       const resp = await fetch('/api/ai/finetune', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -311,7 +307,7 @@ export default function SimulatePage() {
             // Attach any negative notes for the same motivo as corrections to learn from
             correctionNotes: negativeNotesByMotivo[(e.motivo ?? '').toLowerCase().trim()] ?? [],
           })),
-          systemPrompt: sysPrompt,
+          systemPrompt: '',
         }),
       })
       const data = await resp.json() as { jobId?: string; examplesCount?: number; error?: string; skipped?: boolean; reason?: string }
@@ -562,9 +558,7 @@ export default function SimulatePage() {
       ? `\n\nPROCEDIMENTO DA BASE DE CONHECIMENTO para "${conv.motivo}":\n${relevantKb}`
       : '\n\nAVISO: Nenhuma base de conhecimento foi carregada. Abra chamado técnico para qualquer problema que não consiga resolver com certeza.'
 
-    const agentPromptText = agentPrompt
-      ? agentPrompt.replace('{{KB}}', relevantKb || kbTrunc).replace('{{ASSUNTO}}', conv.assunto).replace('{{MOTIVO}}', conv.motivo) + '\n\n' + DEFAULT_AGENT_RULES
-      : 'Você é um atendente de suporte técnico.' + '\n\n' + DEFAULT_AGENT_RULES
+    const agentPromptText = 'Você é um atendente de suporte técnico.' + '\n\n' + DEFAULT_AGENT_RULES
 
     // Immediate learning via prompt injection was removed — any extra text beyond the KB
     // procedure creates competing directives and causes hallucination.
@@ -906,34 +900,6 @@ Responda: "Entendo! Para resolver agora mesmo, posso te orientar pelo sistema. V
                   <CheckCircle size={12} /> Chave configurada — pronto para simular
                 </div>
               )}
-            </div>
-          </div>
-        </GlassCard>
-
-        <GlassCard>
-          <div className="p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
-                <MessageSquare size={16} className="text-orange-400" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-primary">Prompt do Agente</h2>
-                <p className="text-xs text-muted">Como a IA de atendimento deve se comportar</p>
-              </div>
-            </div>
-            <textarea value={agentPrompt} onChange={e => { setAgentPrompt(e.target.value); localStorage.setItem('nexus_sim_agent_prompt', e.target.value) }}
-              className="w-full px-4 py-3 rounded-xl bg-glass border border-glass-border text-primary text-xs focus:outline-none focus:border-orange-500/50 resize-none"
-              rows={6} placeholder="Cole o system prompt da sua IA de atendimento..." />
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {['{{KB}}', '{{ASSUNTO}}', '{{MOTIVO}}'].map(tag => (
-                <button key={tag} onClick={() => {
-                  const ta = document.querySelector('textarea[placeholder*="system prompt"]') as HTMLTextAreaElement
-                  if (ta) { const s = ta.selectionStart; ta.value = ta.value.slice(0, s) + tag + ta.value.slice(ta.selectionEnd); ta.focus() }
-                }}
-                  className="px-2 py-1 rounded text-[10px] font-mono bg-glass border border-glass-border text-secondary hover:border-orange-500/30 hover:text-orange-400 transition-all">
-                  {tag}
-                </button>
-              ))}
             </div>
           </div>
         </GlassCard>

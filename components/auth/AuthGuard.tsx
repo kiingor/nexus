@@ -20,6 +20,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         setAuthenticated(true)
       }
       setChecking(false)
+    }).catch(() => {
+      router.replace('/login')
+      setChecking(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {

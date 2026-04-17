@@ -19,11 +19,9 @@ const BASE_MODELS = [
 ]
 
 const FINETUNED_MODEL_ID = process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL
-const FINETUNED_MODEL_V2_ID = process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL_V2
 
 const MODELS = [
   ...(FINETUNED_MODEL_ID ? [{ id: FINETUNED_MODEL_ID, label: 'Nexus AI' }] : []),
-  ...(FINETUNED_MODEL_V2_ID ? [{ id: FINETUNED_MODEL_V2_ID, label: 'Nexus AI V2' }] : []),
   ...BASE_MODELS,
 ]
 
@@ -38,7 +36,7 @@ export function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessageType[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [model, setModel] = useState(FINETUNED_MODEL_V2_ID || FINETUNED_MODEL_ID || 'gpt-4.1-mini')
+  const [model, setModel] = useState(FINETUNED_MODEL_ID || 'gpt-4.1-mini')
   const [products, setProducts] = useState<Product[]>([])
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [loadingProducts, setLoadingProducts] = useState(true)

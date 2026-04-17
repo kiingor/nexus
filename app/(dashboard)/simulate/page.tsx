@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Brain, Database, Play, BarChart3, Upload, RefreshCw, CheckCircle, AlertCircle, ChevronDown, ChevronUp, FileText, MessageSquare } from 'lucide-react'
+import { Brain, Database, Play, BarChart3, Upload, RefreshCw, CheckCircle, AlertCircle, ChevronDown, ChevronUp, FileText, MessageSquare, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -32,19 +32,38 @@ interface SimResult {
   transcript: Array<{ role: 'agent' | 'client'; text: string }>
   ticketOpened: boolean
   keywords?: Array<{ numero: number; descricao: string; palavras_chave: string[]; sugestao_kb: string }>
+  feedback?: 'positive' | 'negative'
+  feedbackNote?: string
 }
 
 type Panel = 'config' | 'dados' | 'simular' | 'resultados'
 
+interface TrainingEntry {
+  id: number
+  assunto: string
+  motivo: string
+  feedback: 'positive' | 'negative'
+  feedbackNote: string
+  transcript: Array<{ role: 'agent' | 'client'; text: string }>
+  savedAt: string
+}
+
 // ---------------------------------------------------------------------------
 // Default agent rules
 // ---------------------------------------------------------------------------
-const DEFAULT_AGENT_RULES = `Foco na solução: NUNCA peça CNPJ, AnyDesk, nome ou qualquer dado do cliente. Vá DIRETO ao problema. Máximo 2 frases por mensagem.
-Use seu conhecimento para tentar resolver o problema. Passe os passos UM POR VEZ aguardando confirmação a cada passo.
+const DEFAULT_AGENT_RULES = `REGRA ABSOLUTA — BASE DE CONHECIMENTO:
+Antes de cada resposta você DEVE consultar a BASE DE CONHECIMENTO fornecida acima.
+Identifique as palavras-chave do problema do cliente (ex: SPED, NF-e, boleto, relatório) e localize o procedimento correspondente.
+SE O ASSUNTO ESTIVER NA KB: execute o procedimento da KB imediatamente. PROIBIDO abrir chamado quando há procedimento na KB.
+SE o cliente disser "já solicitei", "já aguardo", "já tentei" mas o assunto estiver na KB: IGNORE o histórico e ofereça resolver AGORA pelo chat/telefone seguindo o procedimento da KB.
+SOMENTE abra chamado se o problema genuinamente não tiver solução na KB após tentar o procedimento.
+
+REGRAS DE ATENDIMENTO:
+Foco na solução: NUNCA peça CNPJ, AnyDesk, nome ou qualquer dado do cliente. Vá DIRETO ao problema. Máximo 2 frases por mensagem.
+Passe os passos UM POR VEZ aguardando confirmação a cada passo.
 NUNCA passe todos os passos de uma vez — um passo, espera, próximo passo.
 Pergunte "Conseguiu?" ou "Deu certo?" após cada instrução.
 Quando o cliente confirmar resolução: encerre com "Que ótimo! Atendimento encerrado!"
-Se não conseguir resolver: diga APENAS "Vou abrir um chamado técnico para você." e ENCERRE.
 NUNCA encerre sem ter resolvido OU aberto chamado.
 PROIBIDO: NUNCA escreva tool calls, JSON ou funções. NUNCA peça CNPJ. Responda SOMENTE com fala de atendente ao telefone.`
 
@@ -66,6 +85,7 @@ export default function SimulatePage() {
   const [concurrency, setConcurrency] = useState(5)
   const [maxTurns, setMaxTurns] = useState(8)
   const [agentPrompt, setAgentPrompt] = useState('')
+  const [clientPrompt, setClientPrompt] = useState('')
   const [kbContent, setKbContent] = useState('')
   const [kbFileName, setKbFileName] = useState('')
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -80,6 +100,16 @@ export default function SimulatePage() {
   const [watchingId, setWatchingId] = useState<number | null>(null)
   const [products, setProducts] = useState<Array<{ name: string; slug: string }>>([])
   const [selectedProductSlug, setSelectedProductSlug] = useState('')
+  const [simFeedbackNotes, setSimFeedbackNotes] = useState<Record<number, string>>({})
+  const [simFeedbackOpen, setSimFeedbackOpen] = useState<Record<number, boolean>>({})
+  const [simFeedbackSending, setSimFeedbackSending] = useState<Record<number, boolean>>({})
+  const [trainingCount, setTrainingCount] = useState(0)
+  const [positiveCount, setPositiveCount] = useState(0)
+  const [negativeCount, setNegativeCount] = useState(0)
+  const [finetuneSending, setFinetuneSending] = useState(false)
+  const [finetuneJobId, setFinetuneJobId] = useState<string | null>(null)
+  const [finetuneStatus, setFinetuneStatus] = useState<'idle' | 'pending' | 'succeeded' | 'failed'>('idle')
+  const [finetuneNotif, setFinetuneNotif] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const liveChatRef = useRef<HTMLDivElement>(null)
 
@@ -118,18 +148,189 @@ export default function SimulatePage() {
     if (savedModel) setApiModel(savedModel)
     const savedPrompt = localStorage.getItem('nexus_sim_agent_prompt')
     if (savedPrompt) setAgentPrompt(savedPrompt)
+    const savedClientPrompt = localStorage.getItem('nexus_sim_client_prompt')
+    if (savedClientPrompt) setClientPrompt(savedClientPrompt)
     const savedResults = localStorage.getItem('nexus_sim_results')
     if (savedResults) {
       try { setSimResults(JSON.parse(savedResults)) } catch { /* ignore */ }
     }
+    try {
+      const training: TrainingEntry[] = JSON.parse(localStorage.getItem('nexus_sim_training') ?? '[]')
+      if (Array.isArray(training)) {
+        setTrainingCount(training.length)
+        setPositiveCount(training.filter(e => e.feedback === 'positive').length)
+        setNegativeCount(training.filter(e => e.feedback === 'negative').length)
+      }
+    } catch { /* ignore */ }
+
+    // Restore pending fine-tune job from previous session
+    const pendingJob = localStorage.getItem('nexus_finetune_pending')
+    if (pendingJob) {
+      setFinetuneJobId(pendingJob)
+      setFinetuneStatus('pending')
+    }
   }, [])
 
-  const saveResults = useCallback((results: Record<number, SimResult>) => {
-    setSimResults(results)
-    try {
-      localStorage.setItem('nexus_sim_results', JSON.stringify(results))
-    } catch { /* ignore */ }
+  // Poll fine-tuning job status every 30s until succeeded or failed
+  useEffect(() => {
+    if (!finetuneJobId || finetuneStatus === 'succeeded' || finetuneStatus === 'failed') return
+
+    const poll = async () => {
+      try {
+        const resp = await fetch('/api/ai/finetune')
+        if (!resp.ok) return
+        const data = await resp.json() as { jobs: Array<{ id: string; status: string; fine_tuned_model: string | null }> }
+        const job = data.jobs?.find(j => j.id === finetuneJobId)
+        if (!job) return
+
+        if (job.status === 'succeeded' && job.fine_tuned_model) {
+          setFinetuneStatus('succeeded')
+          setApiModel(job.fine_tuned_model)
+          localStorage.setItem('nexus_sim_api_model', job.fine_tuned_model)
+          localStorage.removeItem('nexus_finetune_pending')
+          setFinetuneNotif(`Modelo atualizado: ${job.fine_tuned_model.slice(0, 40)}…`)
+          // Auto-dismiss notification after 10s
+          setTimeout(() => setFinetuneNotif(null), 10000)
+        } else if (job.status === 'failed' || job.status === 'cancelled') {
+          setFinetuneStatus('failed')
+          localStorage.removeItem('nexus_finetune_pending')
+          setFinetuneNotif('Fine-tuning falhou. O modelo anterior será mantido.')
+          setTimeout(() => setFinetuneNotif(null), 8000)
+        }
+      } catch { /* ignore */ }
+    }
+
+    poll() // immediate first check
+    const interval = setInterval(poll, 30000)
+    return () => clearInterval(interval)
+  }, [finetuneJobId, finetuneStatus])
+
+  const saveResults = useCallback((newResults: Record<number, SimResult>) => {
+    setSimResults(prev => {
+      const merged = { ...prev }
+      for (const [idStr, result] of Object.entries(newResults)) {
+        const id = Number(idStr)
+        const existing = merged[id]
+        // Preserve feedback/feedbackNote the user already set — never overwrite them
+        merged[id] = existing?.feedback
+          ? { ...result, feedback: existing.feedback, feedbackNote: existing.feedbackNote }
+          : result
+      }
+      try { localStorage.setItem('nexus_sim_results', JSON.stringify(merged)) } catch { /* ignore */ }
+      return merged
+    })
   }, [])
+
+  function selectSimFeedback(id: number, type: 'positive' | 'negative') {
+    setSimResults(prev => {
+      const updated = { ...prev, [id]: { ...prev[id], feedback: type } }
+      try { localStorage.setItem('nexus_sim_results', JSON.stringify(updated)) } catch { /* ignore */ }
+      return updated
+    })
+    setSimFeedbackOpen(prev => ({ ...prev, [id]: true }))
+  }
+
+  async function saveSimFeedback(id: number) {
+    setSimFeedbackSending(prev => ({ ...prev, [id]: true }))
+    try {
+      const note = simFeedbackNotes[id] ?? ''
+      const type = simResults[id]?.feedback
+      if (!type) return
+      const result = simResults[id]
+
+      setSimResults(prev => {
+        const updated = { ...prev, [id]: { ...prev[id], feedbackNote: note } }
+        try { localStorage.setItem('nexus_sim_results', JSON.stringify(updated)) } catch { /* ignore */ }
+        return updated
+      })
+
+      // Persist to localStorage training data
+      if (result?.transcript?.length > 0) {
+        try {
+          const existing: TrainingEntry[] = JSON.parse(localStorage.getItem('nexus_sim_training') ?? '[]')
+          const entry: TrainingEntry = {
+            id,
+            assunto: result.assunto,
+            motivo: result.motivo,
+            feedback: type,
+            feedbackNote: note,
+            transcript: result.transcript,
+            savedAt: new Date().toISOString(),
+          }
+          const filtered = existing.filter(e => e.id !== id)
+          const updated = [...filtered, entry]
+          localStorage.setItem('nexus_sim_training', JSON.stringify(updated))
+          setTrainingCount(updated.length)
+        } catch { /* ignore */ }
+
+        // Update positive/negative counters after saving
+        try {
+          const updated: TrainingEntry[] = JSON.parse(localStorage.getItem('nexus_sim_training') ?? '[]')
+          setPositiveCount(updated.filter(e => e.feedback === 'positive').length)
+          setNegativeCount(updated.filter(e => e.feedback === 'negative').length)
+        } catch { /* ignore */ }
+      }
+
+      setSimFeedbackOpen(prev => ({ ...prev, [id]: false }))
+      setSimFeedbackNotes(prev => { const next = { ...prev }; delete next[id]; return next })
+    } finally {
+      setSimFeedbackSending(prev => ({ ...prev, [id]: false }))
+    }
+  }
+
+  async function runFinetune() {
+    setFinetuneSending(true)
+    try {
+      const training: TrainingEntry[] = JSON.parse(localStorage.getItem('nexus_sim_training') ?? '[]')
+      const positives = training.filter(e => e.feedback === 'positive' && e.transcript.length >= 4)
+      if (positives.length < 10) {
+        alert(`A OpenAI exige mínimo de 10 exemplos positivos para treino. Você tem ${positives.length} — avalie mais ${10 - positives.length} simulações com 👍.`)
+        return
+      }
+
+      // Collect negative notes grouped by motivo — used to enrich positive examples
+      // of the same motivo so the model learns "do this (positive)" + "avoid this (negative note)"
+      const negativeNotesByMotivo: Record<string, string[]> = {}
+      for (const e of training) {
+        if (e.feedback === 'negative' && e.feedbackNote?.trim()) {
+          const key = (e.motivo ?? '').toLowerCase().trim()
+          if (!negativeNotesByMotivo[key]) negativeNotesByMotivo[key] = []
+          negativeNotesByMotivo[key].push(e.feedbackNote.trim())
+        }
+      }
+
+      const sysPrompt = localStorage.getItem('nexus_sim_agent_prompt') || ''
+      const resp = await fetch('/api/ai/finetune', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          examples: positives.map(e => ({
+            transcript: e.transcript,
+            motivo: e.motivo,
+            feedbackNote: e.feedbackNote,
+            // Attach any negative notes for the same motivo as corrections to learn from
+            correctionNotes: negativeNotesByMotivo[(e.motivo ?? '').toLowerCase().trim()] ?? [],
+          })),
+          systemPrompt: sysPrompt,
+        }),
+      })
+      const data = await resp.json() as { jobId?: string; examplesCount?: number; error?: string; skipped?: boolean; reason?: string }
+      if (data.jobId) {
+        setFinetuneJobId(data.jobId)
+        setFinetuneStatus('pending')
+        localStorage.setItem('nexus_finetune_pending', data.jobId)
+        setFinetuneNotif(`Fine-tuning iniciado · ${data.examplesCount ?? positives.length} exemplos · Job: ${data.jobId.slice(0, 20)}…`)
+      } else if (data.error) {
+        alert('Erro ao iniciar fine-tuning: ' + data.error)
+      } else if (data.skipped) {
+        alert('Nenhum exemplo válido para treino: ' + (data.reason ?? 'transcrições muito curtas'))
+      }
+    } catch (e) {
+      alert('Erro: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setFinetuneSending(false)
+    }
+  }
 
   const navItems: Array<{ key: Panel; label: string; icon: React.ReactNode }> = [
     { key: 'config', label: 'Configurar', icon: <Brain size={17} /> },
@@ -229,13 +430,14 @@ export default function SimulatePage() {
   // ---------------------------------------------------------------------------
   // Simulation
   // ---------------------------------------------------------------------------
-  async function callAI(messages: Array<{ role: string; content: string }>, system: string | null, maxTokens: number): Promise<string> {
+
+  // Agent AI: uses the configured API (Nexus or OpenAI) with KB context
+  async function callAI(messages: Array<{ role: string; content: string }>, system: string | null, maxTokens: number, kbOverride?: string): Promise<string> {
     const url = useCustomApi && customApiUrl ? customApiUrl : 'https://api.openai.com/v1/chat/completions'
     const model = apiModel
 
     let body: Record<string, unknown>
     if (useCustomApi && customApiUrl) {
-      // Nexus API format
       const nonSystem = messages.filter(m => m.role !== 'system')
       const lastMsg = nonSystem.length > 0 ? nonSystem[nonSystem.length - 1].content : ''
       const history = nonSystem.slice(0, -1).map(m => ({ role: m.role === 'assistant' ? 'assistant' as const : 'user' as const, content: m.content }))
@@ -246,53 +448,156 @@ export default function SimulatePage() {
     }
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    // Nexus local API: no Authorization needed (treated as internal call)
-    // External OpenAI API: send Bearer token
-    if (!useCustomApi && apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`
-    }
+    if (!useCustomApi && apiKey) headers['Authorization'] = `Bearer ${apiKey}`
 
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '')
-      throw new Error(`HTTP ${resp.status}: ${text.slice(0, 200)}`)
-    }
+    if (!resp.ok) { const text = await resp.text().catch(() => ''); throw new Error(`HTTP ${resp.status}: ${text.slice(0, 200)}`) }
     const data = await resp.json()
     return (data.choices?.[0]?.message?.content || data.response || data.content || data.message || '').toString().trim()
   }
 
+  // Client AI: always uses direct OpenAI with a neutral model — NO KB access.
+  // This prevents the simulated client from "knowing" the support procedures.
+  async function callClientAI(messages: Array<{ role: string; content: string }>, system: string | null, maxTokens: number): Promise<string> {
+    const clientModel = 'gpt-4o-mini'
+    const msgs = system ? [{ role: 'system', content: system }, ...messages] : messages
+    const body = { model: clientModel, max_tokens: maxTokens, messages: msgs }
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    // Use provided API key, or fall back to server-side proxy (Nexus local) for key-less setups
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`
+    }
+    const url = apiKey ? 'https://api.openai.com/v1/chat/completions' : `${window.location.origin}/api/ai/client-sim`
+    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+    if (!resp.ok) { const text = await resp.text().catch(() => ''); throw new Error(`HTTP ${resp.status}: ${text.slice(0, 200)}`) }
+    const data = await resp.json()
+    return (data.choices?.[0]?.message?.content || data.response || '').toString().trim()
+  }
+
+  // Parse KB into keyword-indexed entries for real-time lookup
+  function parseKBEntries(kb: string): Array<{ title: string; keywords: string[]; content: string }> {
+    if (!kb.trim()) return []
+    const sections = kb.split(/\n(?=#{1,3}\s)/).filter(s => s.trim().length > 30)
+    if (sections.length === 0) {
+      // No headers — split by double newline blocks
+      return kb.split(/\n{2,}/).filter(s => s.trim().length > 30).map(s => {
+        const words = s.toLowerCase().split(/[\s,;:.()\/\-]+/).filter(w => w.length > 3)
+        return { title: s.slice(0, 60), keywords: [...new Set(words)], content: s }
+      })
+    }
+    return sections.map(section => {
+      const firstLine = section.split('\n')[0].replace(/^#+\s*/, '').trim()
+      const kwLineMatch = section.match(/palavras.chave[:\s]+([^\n]+)/i)
+      const kwFromLine = kwLineMatch ? kwLineMatch[1].split(/[,;]/).map(k => k.trim().toLowerCase().replace(/^["'*]+|["'*]+$/g, '')).filter(Boolean) : []
+      const titleWords = firstLine.toLowerCase().split(/[\s,;:.()\/\-]+/).filter(w => w.length > 3)
+      return { title: firstLine, keywords: [...new Set([...kwFromLine, ...titleWords])], content: section.trim() }
+    })
+  }
+
+  // Find the most relevant KB entry for a given text.
+  // Scoring: keyword frequency in text + title bonus (entry title found in text, or text found in entry title).
+  // Title match gets a large bonus so entries whose title directly names the topic always win
+  // over entries that merely share some incidental keywords.
+  function matchKBEntry(text: string, entries: Array<{ title: string; keywords: string[]; content: string }>): { title: string; content: string } | null {
+    const t = text.toLowerCase()
+    let best: { title: string; content: string } | null = null
+    let bestScore = 0
+    for (const entry of entries) {
+      const kwScore = entry.keywords.reduce((s, kw) => s + (t.includes(kw) ? (t.split(kw).length - 1) : 0), 0)
+      if (kwScore === 0) continue
+      // Title bonus: +5 if the entry title appears in the query, +3 if the query contains the title
+      const titleLower = entry.title.toLowerCase()
+      const titleBonus = t.includes(titleLower) ? 5 : (titleLower.split(/\s+/).filter(w => w.length > 3).every(w => t.includes(w)) ? 3 : 0)
+      const score = kwScore + titleBonus
+      if (score > bestScore) { bestScore = score; best = entry }
+    }
+    return bestScore > 0 ? best : null
+  }
+
+  function retrieveKB(query: string, kb: string, maxChars = 4000): string {
+    if (!kb.trim()) return ''
+    // Split into chunks by markdown headers, --- separators, or double newlines
+    const chunks = kb.split(/\n(?=#{1,3}\s|\n---+\n|\n===+\n)/).flatMap(c =>
+      c.length > 800 ? c.split(/\n\n+/).filter(s => s.trim().length > 40) : [c]
+    ).filter(c => c.trim().length > 40)
+    if (chunks.length <= 1) return kb.slice(0, maxChars)
+
+    // Build keyword set from query (words > 3 chars + motivo words)
+    const keywords = query.toLowerCase().split(/[\s,;:.()\-\/]+/).filter(w => w.length > 3)
+
+    const scored = chunks.map(chunk => {
+      const cl = chunk.toLowerCase()
+      const score = keywords.reduce((s, w) => s + (cl.includes(w) ? (cl.split(w).length - 1) : 0), 0)
+      return { chunk, score }
+    }).sort((a, b) => b.score - a.score)
+
+    // Collect top chunks up to maxChars
+    let result = ''
+    for (const { chunk } of scored) {
+      if (result.length >= maxChars) break
+      result += chunk.trim() + '\n\n'
+    }
+    return result.trim() || kb.slice(0, maxChars)
+  }
+
   async function simulateOne(conv: Conversation, onTurn?: (msg: { role: 'agent' | 'client'; text: string }) => void): Promise<SimResult> {
-    const KB_MAX = 24000
-    const kbTrunc = kbContent.length > KB_MAX ? kbContent.slice(0, KB_MAX) + '\n...[truncada]' : kbContent
-    const kbSection = kbContent.trim().length > 10 ? `\n\nBASE DE CONHECIMENTO:\n${kbTrunc}` : ''
+    // kbTrunc is only used for full-KB injection into the system prompt (token budget)
+    // All parsing and matching uses the full kbContent so sections at the end of the file are included
+    const KB_PROMPT_MAX = 100000
+    const kbTrunc = kbContent.length > KB_PROMPT_MAX ? kbContent.slice(0, KB_PROMPT_MAX) + '\n...[truncada]' : kbContent
+
+    // Parse KB entries early so we can use the best match for kbSection too
+    const kbEntriesEarly = kbContent.trim().length > 10 ? parseKBEntries(kbContent) : []
+
+    // Try to match the conversation motivo/assunto against KB entries
+    // If a specific entry is found, use ONLY that entry as kbSection to avoid mixing similar procedures
+    const motivoQuery = `${conv.motivo} ${conv.assunto}`
+    const preMatchedEntry = kbEntriesEarly.length > 0 ? matchKBEntry(motivoQuery, kbEntriesEarly) : null
+
+    const relevantKb = preMatchedEntry
+      ? preMatchedEntry.content
+      : (kbContent.trim().length > 10 ? retrieveKB(`${conv.assunto} ${conv.motivo} ${conv.conv.slice(0, 400)}`, kbContent) : '')
+
+    const kbSection = relevantKb
+      ? `\n\nPROCEDIMENTO DA BASE DE CONHECIMENTO para "${conv.motivo}":\n${relevantKb}`
+      : '\n\nAVISO: Nenhuma base de conhecimento foi carregada. Abra chamado técnico para qualquer problema que não consiga resolver com certeza.'
 
     const agentPromptText = agentPrompt
-      ? agentPrompt.replace('{{KB}}', kbTrunc).replace('{{ASSUNTO}}', conv.assunto).replace('{{MOTIVO}}', conv.motivo) + '\n\n' + DEFAULT_AGENT_RULES
+      ? agentPrompt.replace('{{KB}}', relevantKb || kbTrunc).replace('{{ASSUNTO}}', conv.assunto).replace('{{MOTIVO}}', conv.motivo) + '\n\n' + DEFAULT_AGENT_RULES
       : 'Você é um atendente de suporte técnico.' + '\n\n' + DEFAULT_AGENT_RULES
 
+    // Immediate learning via prompt injection was removed — any extra text beyond the KB
+    // procedure creates competing directives and causes hallucination.
+    // Learning happens exclusively through batch fine-tuning (see runFinetune / Dados tab).
+    const sysAgentBase = agentPromptText
     const sysAgent = agentPromptText + kbSection
+
+    // Reuse already-parsed entries for per-turn lookup
+    const kbEntries = kbEntriesEarly
 
     // Original context for client
     const origLines = conv.conv.split('\n').map(l => l.trim()).filter(Boolean)
     const origClient = origLines.filter(l => l.startsWith('[CLIENTE]:')).map(l => l.replace('[CLIENTE]:', '').trim())
     const origClientStr = origClient.slice(0, 10).map((l, i) => `${i + 1}. ${l}`).join('\n')
 
-    const clientContext = `Você é um cliente leigo ligando para suporte do Softshop com o seguinte problema:
+    const defaultClientContext = `Você é um cliente leigo ligando para suporte técnico com o seguinte problema:
 ${conv.assunto}
 
-Falas que o cliente real teve nesta conversa (use como guia de contexto e para fornecer dados como CNPJ, AnyDesk, nome):
-${origClientStr}
+REGRAS ABSOLUTAS:
+- Você NÃO tem acesso a nenhuma base de conhecimento, solução ou resposta da IA atendente
+- Você NÃO sabe como resolver o problema — está ligando justamente porque não sabe
+- Responda em 1-2 frases simples, como um leigo falaria ao telefone
+- Quando o atendente der uma instrução: tente executar e relate o que aconteceu ("cliquei, apareceu X")
+- Só confirme resolução APÓS o atendente perguntar "deu certo?" e você ter executado o último passo
+- Se um passo der erro ou não funcionar: descreva o erro que apareceu na tela
+- Forneça dados solicitados (CNPJ, nome, número de versão) de forma verossímil baseada no problema
+- NUNCA peça para abrir chamado — deixe o atendente tomar essa decisão
+- NUNCA antecipe a solução nem confirme resolução antes do momento certo
+- Se o atendente der informações da base de conhecimento: reaja como um leigo que está tentando seguir as instruções, sem demonstrar que já sabe a resposta`
 
-REGRAS:
-- Responda em 1-2 frases simples, sem termos técnicos
-- Quando o atendente der uma instrução: execute e relate o que aconteceu ("cliquei, apareceu X")
-- Só confirme que resolveu DEPOIS de executar o último passo e o atendente perguntar "deu certo?"
-- Se um passo não funcionou: relate o erro específico
-- Forneça dados pedidos (CNPJ, AnyDesk) com base nas falas originais acima
-- NUNCA peça para abrir chamado você mesmo — deixe o atendente decidir
-- NUNCA confirme resolução antecipadamente antes de terminar todos os passos
-
-Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, incluindo as dificuldades que o cliente relatou.`
+    const clientContext = clientPrompt.trim()
+      ? clientPrompt.replace('{{ASSUNTO}}', conv.assunto).replace('{{FALAS_ORIGINAIS}}', origClientStr)
+      : defaultClientContext
 
     const tx: Array<{ role: 'agent' | 'client'; text: string }> = []
     const aHist: Array<{ role: string; content: string }> = []
@@ -313,15 +618,19 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
       onTurn?.(msg)
     }
 
+    // Track the active KB procedure across all turns — once identified, keep using it
+    // even when the client stops mentioning the keyword (e.g. "Sim, estou com o Softshop aberto")
+    let currentProcedure: { title: string; content: string } | null = preMatchedEntry
+
     // Agent greeting
-    const greeting = await callAI([{ role: 'user', content: 'Inicie o atendimento. Cumprimente em UMA frase curta e pergunte diretamente qual é o problema.' }], sysAgent, 60)
+    const greeting = await callAI([{ role: 'user', content: 'Inicie o atendimento. Cumprimente em UMA frase curta e pergunte diretamente qual é o problema.' }], sysAgent, 60, kbTrunc || undefined)
     emit({ role: 'agent', text: greeting })
     aHist.push({ role: 'user', content: greeting }, { role: 'assistant', content: greeting })
     clientHist.push({ role: 'user', content: `Atendente disse: "${greeting.slice(0, 100)}"\nApresente-se e descreva seu problema.` })
 
     for (let turn = 0; turn < maxTurns; turn++) {
       // Client turn
-      let cr = await callAI(clientHist, clientContext, 90)
+      let cr = await callClientAI(clientHist, clientContext, 90)
       cr = cr.replace(/\{[\s\S]*?["']name["']\s*:/g, '').replace(/\b\w+\s*\([^)]{0,200}\)/g, '').replace(/\n{3,}/g, '\n').trim()
       if (!cr) cr = 'Sim.'
       emit({ role: 'client', text: cr })
@@ -334,9 +643,27 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
         break
       }
 
-      // Agent turn
+      // Agent turn — only update currentProcedure from client messages when no procedure
+      // was pre-matched from the motivo/assunto. If preMatchedEntry was found before the
+      // simulation started, lock it for the entire conversation — prevents mid-turn switches
+      // caused by the client accidentally mentioning a keyword from a different scenario
+      // (e.g. "adquirente" triggering "Troca de Adquirente" during a SPED simulation).
       const aHistSlice = aHist.slice(-8)
-      let ar = await callAI(aHistSlice, sysAgent, 280)
+      if (!preMatchedEntry) {
+        const turnMatch = kbEntries.length > 0 ? matchKBEntry(cr, kbEntries) : null
+        if (turnMatch) currentProcedure = turnMatch
+      }
+      const clientWaiting = /já solicit|já aguard|já tentei|ninguém ligou|não ligaram|semana|dias atrás|faz tempo/i.test(cr)
+      const dynamicSys = currentProcedure
+        ? sysAgentBase + `\n\nPROCEDIMENTO ÚNICO PARA ESTE ATENDIMENTO — "${currentProcedure.title}":\n${currentProcedure.content}\n\n=== INSTRUÇÃO OBRIGATÓRIA ===
+Use APENAS o procedimento acima. PROIBIDO: usar qualquer outro procedimento, verificar chamados, inventar ações.
+${clientWaiting
+  ? `O cliente mencionou espera/solicitação anterior. IGNORE esse histórico.
+Responda: "Entendo! Para resolver agora mesmo, posso te orientar pelo sistema. Você está com o [sistema] aberto?"`
+  : `Continue o procedimento acima, UM PASSO POR VEZ. Aguarde confirmação antes do próximo passo.`}
+=== FIM DA INSTRUÇÃO ===`
+        : sysAgent
+      let ar = await callAI(aHistSlice, dynamicSys, 280, currentProcedure?.content || kbTrunc || undefined)
       ar = ar.replace(/\{[\s\S]*?["']name["']\s*:/g, '').replace(/\b\w+\s*\([^)]{0,200}\)/g, '').replace(/\n{3,}/g, '\n').trim()
       if (!ar) ar = 'Certo, um momento.'
       emit({ role: 'agent', text: ar })
@@ -348,14 +675,14 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
       if (ticketRx.test(ar)) {
         ticketOpened = true
         clientHist.push({ role: 'user', content: `Atendente disse: "${ar.slice(0, 200)}"\nEle vai abrir chamado. Responda resignado.` })
-        const fr = await callAI(clientHist, clientContext, 50)
+        const fr = await callClientAI(clientHist, clientContext, 50)
         emit({ role: 'client', text: fr })
         break
       }
 
       if (agentClosedRx.test(ar) && agentStepCount >= 1) {
         clientHist.push({ role: 'user', content: `Atendente disse: "${ar}"\nO problema foi resolvido? Confirme brevemente.` })
-        const fc = await callAI(clientHist, clientContext, 80)
+        const fc = await callClientAI(clientHist, clientContext, 80)
         emit({ role: 'client', text: fc })
         if (resolvedRx.test(fc)) resolved = true
         break
@@ -504,10 +831,8 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
                     setUseCustomApi(e.target.checked)
                     if (e.target.checked) {
                       setCustomApiUrl(`${window.location.origin}/api/ai/chat`)
-                      const v2 = process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL_V2
                       const v1 = process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL
-                      if (v2) { setApiModel(v2); localStorage.setItem('nexus_sim_api_model', v2) }
-                      else if (v1) { setApiModel(v1); localStorage.setItem('nexus_sim_api_model', v1) }
+                      if (v1) { setApiModel(v1); localStorage.setItem('nexus_sim_api_model', v1) }
                     }
                   }} className="rounded border-glass-border" />
                   Usar API customizada (Nexus local)
@@ -522,10 +847,25 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
                       placeholder="sk-..." />
                   </div>
                   <div>
-                    <label className="block text-xs text-secondary mb-1">Modelo</label>
-                    <input type="text" value={apiModel} onChange={e => { setApiModel(e.target.value); localStorage.setItem('nexus_sim_api_model', e.target.value) }}
-                      className="w-full px-4 py-2.5 rounded-xl bg-glass border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50"
-                      placeholder="gpt-4o-mini" />
+                    <label className="block text-xs text-secondary mb-1">
+                      Modelo
+                      {apiModel !== 'gpt-4o-mini' && (
+                        <span className="ml-2 text-[10px] text-orange-400">(fine-tunado)</span>
+                      )}
+                    </label>
+                    <div className="flex gap-2">
+                      <input type="text" value={apiModel} onChange={e => { setApiModel(e.target.value); localStorage.setItem('nexus_sim_api_model', e.target.value) }}
+                        className="flex-1 px-4 py-2.5 rounded-xl bg-glass border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50"
+                        placeholder="gpt-4o-mini" />
+                      {apiModel !== 'gpt-4o-mini' && (
+                        <button
+                          onClick={() => { setApiModel('gpt-4o-mini'); localStorage.setItem('nexus_sim_api_model', 'gpt-4o-mini') }}
+                          className="px-3 py-2 rounded-xl text-xs border border-glass-border text-secondary hover:text-primary hover:bg-glass-hover transition-all whitespace-nowrap"
+                          title="Voltar para o modelo base">
+                          ↺ Base
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </>
               )}
@@ -541,9 +881,6 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
                     <label className="block text-xs text-secondary mb-1">Modelo</label>
                     <select value={apiModel} onChange={e => { setApiModel(e.target.value); localStorage.setItem('nexus_sim_api_model', e.target.value) }}
                       className="w-full px-4 py-2.5 rounded-xl bg-glass border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50">
-                      {process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL_V2 && (
-                        <option value={process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL_V2}>Nexus AI V2</option>
-                      )}
                       {process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL && (
                         <option value={process.env.NEXT_PUBLIC_OPENAI_FINETUNED_MODEL}>Nexus AI</option>
                       )}
@@ -597,6 +934,41 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
                   {tag}
                 </button>
               ))}
+            </div>
+          </div>
+        </GlassCard>
+
+        <GlassCard>
+          <div className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                <MessageSquare size={16} className="text-blue-400" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-primary">Prompt do Cliente</h2>
+                <p className="text-xs text-muted">Como o cliente simulado deve se comportar</p>
+              </div>
+            </div>
+            <textarea value={clientPrompt} onChange={e => { setClientPrompt(e.target.value); localStorage.setItem('nexus_sim_client_prompt', e.target.value) }}
+              className="w-full px-4 py-3 rounded-xl bg-glass border border-glass-border text-primary text-xs focus:outline-none focus:border-blue-500/50 resize-none"
+              rows={6} placeholder="Deixe em branco para usar o comportamento padrão do cliente (recomendado).&#10;&#10;Variáveis disponíveis: {{ASSUNTO}}, {{FALAS_ORIGINAIS}}" />
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {['{{ASSUNTO}}', '{{FALAS_ORIGINAIS}}'].map(tag => (
+                <button key={tag} onClick={() => {
+                  const newVal = clientPrompt + tag
+                  setClientPrompt(newVal)
+                  localStorage.setItem('nexus_sim_client_prompt', newVal)
+                }}
+                  className="px-2 py-1 rounded text-[10px] font-mono bg-glass border border-glass-border text-secondary hover:border-blue-500/30 hover:text-blue-400 transition-all">
+                  {tag}
+                </button>
+              ))}
+              {clientPrompt && (
+                <button onClick={() => { setClientPrompt(''); localStorage.removeItem('nexus_sim_client_prompt') }}
+                  className="px-2 py-1 rounded text-[10px] bg-glass border border-glass-border text-red-400 hover:border-red-500/40 transition-all ml-auto">
+                  ↺ Restaurar padrão
+                </button>
+              )}
             </div>
           </div>
         </GlassCard>
@@ -673,7 +1045,18 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
                   <p className="text-xs text-muted">{conversations.length} conversas carregadas</p>
                 </div>
               </div>
-              {convFileName && <Button variant="danger" size="sm" onClick={() => { setConversations([]); setConvFileName(''); setSelectedIds(new Set()) }}>↺ Restaurar</Button>}
+              {(conversations.length > 0 || Object.keys(simResults).length > 0) && (
+                <Button variant="danger" size="sm" onClick={() => {
+                  setConversations([])
+                  setConvFileName('')
+                  setSelectedIds(new Set())
+                  setSimResults({})
+                  setLiveTranscripts({})
+                  setWatchingId(null)
+                  setSimProgress({ current: 0, total: 0 })
+                  try { localStorage.removeItem('nexus_sim_results') } catch { /* ignore */ }
+                }}>↺ Limpar tudo</Button>
+              )}
             </div>
             <div className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${convFileName ? 'border-green-500/40 bg-green-500/5' : 'border-glass-border hover:border-orange-500/30 hover:bg-orange-500/5'}`}>
               <input type="file" accept=".json" onChange={e => e.target.files?.[0] && handleConvUpload(e.target.files[0], 'replace')}
@@ -690,6 +1073,108 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
             </div>
           </div>
         </GlassCard>
+
+        {/* Reinforcement Learning card */}
+        <GlassCard>
+          <div className="p-6 space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
+                  <Brain size={16} className="text-purple-400" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-primary">Aprendizado Reforçado</h2>
+                  <p className="text-xs text-muted">Fine-tuning acumulado com suas avaliações</p>
+                </div>
+              </div>
+              {trainingCount > 0 && (
+                <button onClick={() => {
+                  localStorage.removeItem('nexus_sim_training')
+                  localStorage.removeItem('nexus_sim_hints')
+                  setTrainingCount(0)
+                  setPositiveCount(0)
+                  setNegativeCount(0)
+                }} className="px-3 py-1.5 rounded-lg text-xs text-red-400 border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 transition-all">
+                  Limpar tudo
+                </button>
+              )}
+            </div>
+
+            {trainingCount === 0 ? (
+              <p className="text-xs text-muted">Avalie simulações com 👍/👎 para acumular exemplos de treinamento.</p>
+            ) : (
+              <>
+                {/* Counters */}
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-green-400" />
+                    <span className="text-xs text-secondary"><span className="text-green-400 font-semibold">{positiveCount}</span> positivos</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-red-400" />
+                    <span className="text-xs text-secondary"><span className="text-red-400 font-semibold">{negativeCount}</span> negativos</span>
+                  </div>
+                </div>
+
+                {/* Progress toward threshold — based on positive examples (OpenAI requires min 10) */}
+                {positiveCount < 10 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-muted">Positivos para treino (mínimo exigido pela OpenAI)</span>
+                      <span className="text-[11px] text-purple-400 font-medium">{positiveCount}/10</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-purple-500/60 transition-all duration-500"
+                        style={{ width: `${Math.min(positiveCount / 10 * 100, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted">
+                      {10 - positiveCount} avaliação{10 - positiveCount !== 1 ? 'ões' : ''} positiva{10 - positiveCount !== 1 ? 's' : ''} para atingir o mínimo · avaliações negativas ensinam o que evitar
+                    </p>
+                  </div>
+                )}
+
+                {/* Fine-tune button */}
+                <div className="flex items-center gap-3">
+                  <button
+                    disabled={finetuneSending || finetuneStatus === 'pending' || positiveCount < 10}
+                    onClick={runFinetune}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                      positiveCount >= 10
+                        ? 'bg-purple-500/20 border-purple-500/40 text-purple-300 hover:bg-purple-500/30'
+                        : 'bg-glass border-glass-border text-secondary hover:bg-glass-hover'
+                    }`}
+                  >
+                    <Brain size={13} />
+                    {finetuneSending ? 'Enviando para treino...' :
+                      finetuneStatus === 'pending' ? 'Treino em andamento...' :
+                      positiveCount >= 10 ? `Treinar modelo (${positiveCount} positivos + ${negativeCount} correções)` :
+                      `Aguardando mínimo (${positiveCount}/10 positivos)`}
+                  </button>
+                  {positiveCount >= 10 && (
+                    <span className="text-[10px] text-purple-400/70">Mínimo atingido ✓</span>
+                  )}
+                </div>
+
+                {/* Job status */}
+                {finetuneStatus === 'pending' && finetuneJobId && (
+                  <div className="flex items-center gap-2 text-[11px] text-orange-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+                    Fine-tuning em andamento · {finetuneJobId.slice(0, 28)}…
+                  </div>
+                )}
+                {finetuneStatus === 'succeeded' && (
+                  <div className="flex items-center gap-2 text-[11px] text-green-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                    Modelo atualizado com sucesso
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </GlassCard>
       </div>
     ),
 
@@ -699,6 +1184,18 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted">{selectedIds.size} selecionadas de {conversations.length}</span>
+            {(conversations.length > 0 || Object.keys(simResults).length > 0) && (
+              <Button variant="danger" size="sm" disabled={simRunning} onClick={() => {
+                setConversations([])
+                setConvFileName('')
+                setSelectedIds(new Set())
+                setSimResults({})
+                setLiveTranscripts({})
+                setWatchingId(null)
+                setSimProgress({ current: 0, total: 0 })
+                try { localStorage.removeItem('nexus_sim_results') } catch { /* ignore */ }
+              }}>↺ Limpar histórico</Button>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => {
@@ -722,7 +1219,7 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
         ) : (
           <div className="grid grid-cols-[280px_1fr] gap-4" style={{ height: 'calc(100vh - 260px)' }}>
             {/* Lista de conversas */}
-            <GlassCard>
+            <GlassCard className="h-full overflow-hidden">
               <div className="h-full overflow-y-auto">
                 {conversations.map(conv => {
                   const isSelected = selectedIds.has(conv.id)
@@ -760,7 +1257,7 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
             </GlassCard>
 
             {/* Chat ao vivo */}
-            <GlassCard>
+            <GlassCard className="h-full overflow-hidden">
               <div className="h-full flex flex-col">
                 {watchingId == null ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-muted">
@@ -824,14 +1321,84 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
                             </div>
                           </div>
                         )}
-                      </div>
 
-                      {/* Footer com razão */}
-                      {result?.reason && (
-                        <div className="px-5 py-3 border-t border-glass-border flex-shrink-0">
-                          <p className="text-[11px] text-muted"><span className="text-secondary font-medium">Avaliação: </span>{result.reason}</p>
-                        </div>
-                      )}
+                        {/* Feedback — aparece assim que o resultado desta conversa estiver disponível */}
+                        {result && (
+                          <div className="border border-glass-border rounded-xl p-3 bg-black/10 mt-2">
+                            {result.reason && (
+                              <p className="text-[11px] text-muted mb-3"><span className="text-secondary font-medium">Avaliação: </span>{result.reason}</p>
+                            )}
+                            <div className="flex items-center justify-between">
+                              <p className="text-[11px] text-muted">Esta simulação foi útil para treinar a IA?</p>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  disabled={simFeedbackSending[watchingId]}
+                                  onClick={() => selectSimFeedback(watchingId, 'positive')}
+                                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${result.feedback === 'positive' ? 'bg-green-500/20 border-green-500/40 text-green-400' : 'bg-glass border-glass-border text-secondary hover:bg-green-500/10 hover:border-green-500/30 hover:text-green-400'}`}>
+                                  <ThumbsUp size={13} /> Boa
+                                </button>
+                                <button
+                                  disabled={simFeedbackSending[watchingId]}
+                                  onClick={() => selectSimFeedback(watchingId, 'negative')}
+                                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${result.feedback === 'negative' ? 'bg-red-500/20 border-red-500/40 text-red-400' : 'bg-glass border-glass-border text-secondary hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'}`}>
+                                  <ThumbsDown size={13} /> Ruim
+                                </button>
+                              </div>
+                            </div>
+
+                            {simFeedbackOpen[watchingId] && (
+                              <div className="mt-3 space-y-2">
+                                <label className="text-[11px] text-secondary">
+                                  {result.feedback === 'negative'
+                                    ? <>Instrução / Observação <span className="text-muted">(descreva o erro OU o passo a passo correto)</span></>
+                                    : <>Justificativa <span className="text-muted">(opcional)</span></>}
+                                </label>
+                                <textarea
+                                  rows={2}
+                                  value={simFeedbackNotes[watchingId] ?? ''}
+                                  onChange={e => setSimFeedbackNotes(prev => ({ ...prev, [watchingId]: e.target.value }))}
+                                  placeholder={result.feedback === 'negative'
+                                    ? 'Ex: Para SPED fiscal: 1. Solicitar CNPJ, 2. Abrir o módulo X, 3. Gerar o arquivo... — ou descreva o que foi errado'
+                                    : 'Ex: A IA resolveu corretamente sem precisar abrir chamado...'}
+                                  className="w-full px-3 py-2 rounded-xl bg-glass border border-glass-border text-primary text-xs focus:outline-none focus:border-orange-500/50 resize-none placeholder:text-muted"
+                                />
+                                <div className="flex items-center justify-between">
+                                  <span className={`text-[10px] px-2 py-0.5 rounded border ${result.feedback === 'positive' ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+                                    {result.feedback === 'positive' ? '👍 Positivo' : '👎 Negativo'}
+                                  </span>
+                                  <button
+                                    disabled={simFeedbackSending[watchingId]}
+                                    onClick={() => saveSimFeedback(watchingId)}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-500/15 border border-orange-500/25 text-orange-400 hover:bg-orange-500/25 transition-all disabled:opacity-50">
+                                    {simFeedbackSending[watchingId]
+                                      ? (result.feedback === 'positive' ? 'Enviando para fine-tuning...' : 'Salvando...')
+                                      : 'Salvar avaliação'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {!simFeedbackOpen[watchingId] && result.feedback && (
+                              <div className="mt-2 space-y-1">
+                                <p className="text-[10px] text-muted">
+                                  {result.feedbackNote
+                                    ? `Avaliação salva · "${result.feedbackNote.slice(0, 60)}${result.feedbackNote.length > 60 ? '…' : ''}"`
+                                    : 'Avaliação salva — adicione uma justificativa para enriquecer o treinamento'}
+                                </p>
+                                {result.feedback === 'positive' && finetuneJobId && (
+                                  <p className="text-[10px] text-purple-400 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse inline-block" />
+                                    Fine-tuning enviado · Job: {finetuneJobId.slice(0, 24)}…
+                                  </p>
+                                )}
+                                {result.feedback === 'positive' && !finetuneJobId && (
+                                  <p className="text-[10px] text-green-400/70">Salvo para aprendizado em contexto</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </>
                   )
                 })()}
@@ -1014,12 +1581,12 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
               if (!result) return null
               return (
                 <GlassCard key={id}>
-                  <div className="p-6">
-                    <div className="flex items-center justify-between mb-4">
+                  <div className="p-4">
+                    <div className="flex items-center justify-between mb-3">
                       <h3 className="text-sm font-semibold text-primary">Conversa #{result.id} — {result.assunto.slice(0, 60)}</h3>
                       <button onClick={() => setKwMenuOpen(prev => ({ ...prev, [id]: false }))} className="text-muted hover:text-primary text-xs">Fechar</button>
                     </div>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <div className="space-y-2 h-[60vh] overflow-y-auto pr-1">
                       {result.transcript.map((t, i) => (
                         <div key={i} className={`flex ${t.role === 'agent' ? 'justify-start' : 'justify-end'}`}>
                           <div className={`max-w-[70%] px-3 py-2 rounded-lg text-xs ${t.role === 'agent' ? 'bg-glass text-primary border border-glass-border' : 'bg-orange-500/10 text-orange-200 border border-orange-500/20'}`}>
@@ -1065,6 +1632,24 @@ Siga FIELMENTE o comportamento do cliente real de acordo com a transcrição, in
 
   return (
     <div>
+      {/* Fine-tuning notification toast */}
+      {finetuneNotif && (
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg text-sm font-medium transition-all ${finetuneStatus === 'succeeded' ? 'bg-purple-500/20 border-purple-500/40 text-purple-300' : 'bg-red-500/20 border-red-500/40 text-red-300'}`}>
+          {finetuneStatus === 'succeeded'
+            ? <><span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />{finetuneNotif}</>
+            : <><span className="w-2 h-2 rounded-full bg-red-400" />{finetuneNotif}</>}
+          <button onClick={() => setFinetuneNotif(null)} className="ml-2 text-xs opacity-60 hover:opacity-100">✕</button>
+        </div>
+      )}
+
+      {/* Fine-tuning pending indicator */}
+      {finetuneStatus === 'pending' && finetuneJobId && !finetuneNotif && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-3 py-2 rounded-xl border bg-orange-500/10 border-orange-500/25 text-orange-300 text-xs">
+          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+          Fine-tuning em andamento…
+        </div>
+      )}
+
       <div className="mb-6">
         <h1 className="text-3xl font-display font-bold text-primary">{panelTitles[panel][0]}</h1>
         <p className="text-secondary mt-1 text-sm">{panelTitles[panel][1]}</p>

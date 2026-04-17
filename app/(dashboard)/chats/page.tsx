@@ -5,7 +5,7 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Spinner'
-import { Upload, MessageSquare, Search, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
+import { Upload, MessageSquare, Search, ChevronDown, ChevronUp, RefreshCw, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 interface Ticket {
@@ -77,6 +77,54 @@ export default function ChatsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<string | null>(null)
+  const [feedbacks, setFeedbacks] = useState<Record<string, { type: 'positive' | 'negative'; note?: string }>>({})
+  const [feedbackSending, setFeedbackSending] = useState<Record<string, boolean>>({})
+  const [feedbackNotes, setFeedbackNotes] = useState<Record<string, string>>({})
+  const [feedbackOpen, setFeedbackOpen] = useState<Record<string, boolean>>({})
+  const [trainAdded, setTrainAdded] = useState<Record<string, 'positive' | 'negative'>>({})
+  const [trainOpen, setTrainOpen] = useState<Record<string, boolean>>({})
+  const [trainNotes, setTrainNotes] = useState<Record<string, string>>({})
+  const [trainType, setTrainType] = useState<Record<string, 'positive' | 'negative'>>({})
+
+  const LS_FEEDBACK_KEY = 'nexus_ticket_feedbacks'
+
+  // Load persisted feedbacks from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LS_FEEDBACK_KEY)
+      if (saved) setFeedbacks(JSON.parse(saved))
+    } catch { /* ignore */ }
+  }, [])
+
+  // Helper: save a ticket transcript to nexus_sim_training
+  function saveTicketToTraining(ticket: Ticket, type: 'positive' | 'negative', note: string) {
+    try {
+      const msgs = parseChatHistory(ticket.chat_history)
+      const transcript = msgs
+        .filter(m => m.text.trim())
+        .map(m => ({
+          role: (m.sender !== ticket.cliente_nome ? 'agent' : 'client') as 'agent' | 'client',
+          text: m.text.trim(),
+        }))
+      if (transcript.length < 2) return
+      const existing: Array<{
+        id: number; assunto: string; motivo: string;
+        feedback: 'positive' | 'negative'; feedbackNote: string;
+        transcript: Array<{ role: 'agent' | 'client'; text: string }>; savedAt: string
+      }> = JSON.parse(localStorage.getItem('nexus_sim_training') ?? '[]')
+      const entryId = ticket.ticket_numero ?? Math.floor(Date.now() / 1000)
+      const filtered = existing.filter(e => e.id !== entryId)
+      localStorage.setItem('nexus_sim_training', JSON.stringify([...filtered, {
+        id: entryId,
+        assunto: `${ticket.cliente_nome}${ticket.setor ? ` — ${ticket.setor}` : ''}`,
+        motivo: ticket.setor || 'Suporte geral',
+        feedback: type,
+        feedbackNote: note,
+        transcript,
+        savedAt: new Date().toISOString(),
+      }]))
+    } catch { /* ignore */ }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -87,14 +135,71 @@ export default function ChatsPage() {
       if (filterCanal) params.set('canal', filterCanal)
       const res = await fetch(`/api/tickets?${params}`)
       const json = await res.json()
-      setTickets(json.data || [])
+      const data: Ticket[] = json.data || []
+      setTickets(data)
       setTotal(json.total || 0)
     } finally {
       setLoading(false)
     }
   }, [page, search, filterStatus, filterCanal])
 
+  async function sendFeedback(ticket: Ticket, type: 'positive' | 'negative', note?: string) {
+    setFeedbackSending(prev => ({ ...prev, [ticket.ticket_id]: true }))
+    try {
+      // 1. Persist feedback state to localStorage
+      const updated = { ...feedbacks, [ticket.ticket_id]: { type, note } }
+      try { localStorage.setItem(LS_FEEDBACK_KEY, JSON.stringify(updated)) } catch { /* ignore */ }
+
+      // 2. Save transcript to nexus_sim_training so it appears in Aprendizado Reforçado
+      saveTicketToTraining(ticket, type, note ?? '')
+
+      // 3. Best-effort save to DB
+      fetch('/api/tickets/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket_id: ticket.ticket_id, feedback: type, note: note ?? '' }),
+      }).catch(() => {})
+
+      setFeedbacks(updated)
+      setFeedbackOpen(prev => ({ ...prev, [ticket.ticket_id]: false }))
+      setFeedbackNotes(prev => { const next = { ...prev }; delete next[ticket.ticket_id]; return next })
+    } finally {
+      setFeedbackSending(prev => ({ ...prev, [ticket.ticket_id]: false }))
+    }
+  }
+
+  function selectFeedbackType(ticket: Ticket, type: 'positive' | 'negative') {
+    setFeedbacks(prev => ({ ...prev, [ticket.ticket_id]: { type, note: prev[ticket.ticket_id]?.note } }))
+    setFeedbackOpen(prev => ({ ...prev, [ticket.ticket_id]: true }))
+  }
+
+  function addToTraining(ticket: Ticket) {
+    const type = trainType[ticket.ticket_id] ?? 'positive'
+    const note = trainNotes[ticket.ticket_id]?.trim() ?? ''
+    saveTicketToTraining(ticket, type, note)
+    setTrainAdded(prev => ({ ...prev, [ticket.ticket_id]: type }))
+    setTrainOpen(prev => ({ ...prev, [ticket.ticket_id]: false }))
+  }
+
   useEffect(() => { load() }, [load])
+
+  // When tickets load, import any already-saved feedbacks into nexus_sim_training
+  useEffect(() => {
+    if (tickets.length === 0) return
+    try {
+      const savedFeedbacks: Record<string, { type: 'positive' | 'negative'; note?: string }> =
+        JSON.parse(localStorage.getItem(LS_FEEDBACK_KEY) ?? '{}')
+      const training: Array<{ id: number }> =
+        JSON.parse(localStorage.getItem('nexus_sim_training') ?? '[]')
+      const trainingIds = new Set(training.map(e => e.id))
+      for (const ticket of tickets) {
+        const fb = savedFeedbacks[ticket.ticket_id]
+        if (fb && !trainingIds.has(ticket.ticket_numero)) {
+          saveTicketToTraining(ticket, fb.type, fb.note ?? '')
+        }
+      }
+    } catch { /* ignore */ }
+  }, [tickets])
 
   async function handleImport(file: File) {
     setImporting(true)
@@ -289,6 +394,114 @@ export default function ChatsPage() {
                             </div>
                           )
                         })}
+                      </div>
+
+                      {/* Usar no treino */}
+                      {isSimulable(ticket) && (
+                        <div className="mt-3 border border-purple-500/20 rounded-xl p-3 bg-purple-500/5">
+                          {trainAdded[ticket.ticket_id] ? (
+                            <p className="text-[11px] text-purple-400">
+                              ✓ Adicionado ao treino como exemplo {trainAdded[ticket.ticket_id] === 'positive' ? 'positivo' : 'negativo (correção)'}
+                            </p>
+                          ) : trainOpen[ticket.ticket_id] ? (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] text-secondary">Tipo:</span>
+                                <button
+                                  onClick={() => setTrainType(prev => ({ ...prev, [ticket.ticket_id]: 'positive' }))}
+                                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${(trainType[ticket.ticket_id] ?? 'positive') === 'positive' ? 'bg-green-500/20 border-green-500/40 text-green-400' : 'bg-glass border-glass-border text-secondary'}`}>
+                                  <ThumbsUp size={11} /> Positivo
+                                </button>
+                                <button
+                                  onClick={() => setTrainType(prev => ({ ...prev, [ticket.ticket_id]: 'negative' }))}
+                                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${trainType[ticket.ticket_id] === 'negative' ? 'bg-red-500/20 border-red-500/40 text-red-400' : 'bg-glass border-glass-border text-secondary'}`}>
+                                  <ThumbsDown size={11} /> Negativo
+                                </button>
+                              </div>
+                              <textarea
+                                rows={2}
+                                value={trainNotes[ticket.ticket_id] ?? ''}
+                                onChange={e => setTrainNotes(prev => ({ ...prev, [ticket.ticket_id]: e.target.value }))}
+                                placeholder={trainType[ticket.ticket_id] === 'negative' ? 'O que o atendente fez de errado? (ajuda no treino)' : 'O que foi bom neste atendimento? (opcional)'}
+                                className="w-full px-3 py-2 rounded-xl bg-glass border border-glass-border text-primary text-xs focus:outline-none focus:border-purple-500/50 resize-none placeholder:text-muted"
+                              />
+                              <div className="flex items-center justify-between">
+                                <button onClick={() => setTrainOpen(prev => ({ ...prev, [ticket.ticket_id]: false }))}
+                                  className="text-[11px] text-muted hover:text-secondary transition-all">Cancelar</button>
+                                <button onClick={() => addToTraining(ticket)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-500/15 border border-purple-500/25 text-purple-300 hover:bg-purple-500/25 transition-all">
+                                  Confirmar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between">
+                              <p className="text-[11px] text-purple-300/70">Usar este chat como exemplo de treinamento</p>
+                              <button
+                                onClick={() => { setTrainType(prev => ({ ...prev, [ticket.ticket_id]: 'positive' })); setTrainOpen(prev => ({ ...prev, [ticket.ticket_id]: true })) }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-purple-500/15 border border-purple-500/25 text-purple-300 hover:bg-purple-500/25 transition-all">
+                                + Adicionar ao treino
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Feedback */}
+                      <div className="mt-3 border border-glass-border rounded-xl p-3 bg-black/10">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[11px] text-muted">Este atendimento foi bom para treinar a IA?</p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              disabled={feedbackSending[ticket.ticket_id]}
+                              onClick={() => selectFeedbackType(ticket, 'positive')}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${feedbacks[ticket.ticket_id]?.type === 'positive' ? 'bg-green-500/20 border-green-500/40 text-green-400' : 'bg-glass border-glass-border text-secondary hover:bg-green-500/10 hover:border-green-500/30 hover:text-green-400'}`}>
+                              <ThumbsUp size={13} /> Bom
+                            </button>
+                            <button
+                              disabled={feedbackSending[ticket.ticket_id]}
+                              onClick={() => selectFeedbackType(ticket, 'negative')}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${feedbacks[ticket.ticket_id]?.type === 'negative' ? 'bg-red-500/20 border-red-500/40 text-red-400' : 'bg-glass border-glass-border text-secondary hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'}`}>
+                              <ThumbsDown size={13} /> Ruim
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Justificativa — aparece após selecionar */}
+                        {feedbackOpen[ticket.ticket_id] && (
+                          <div className="mt-3 space-y-2">
+                            <label className="text-[11px] text-secondary">
+                              Justificativa <span className="text-muted">(opcional — ajuda no treinamento)</span>
+                            </label>
+                            <textarea
+                              rows={3}
+                              value={feedbackNotes[ticket.ticket_id] ?? feedbacks[ticket.ticket_id]?.note ?? ''}
+                              onChange={e => setFeedbackNotes(prev => ({ ...prev, [ticket.ticket_id]: e.target.value }))}
+                              placeholder="Ex: A IA resolveu corretamente o problema de NF-e sem precisar abrir chamado..."
+                              className="w-full px-3 py-2 rounded-xl bg-glass border border-glass-border text-primary text-xs focus:outline-none focus:border-orange-500/50 resize-none placeholder:text-muted"
+                            />
+                            <div className="flex items-center justify-between">
+                              <span className={`text-[10px] px-2 py-0.5 rounded border ${feedbacks[ticket.ticket_id]?.type === 'positive' ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+                                {feedbacks[ticket.ticket_id]?.type === 'positive' ? '👍 Positivo' : '👎 Negativo'}
+                              </span>
+                              <button
+                                disabled={feedbackSending[ticket.ticket_id]}
+                                onClick={() => sendFeedback(ticket, feedbacks[ticket.ticket_id]!.type, feedbackNotes[ticket.ticket_id] ?? feedbacks[ticket.ticket_id]?.note)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-500/15 border border-orange-500/25 text-orange-400 hover:bg-orange-500/25 transition-all disabled:opacity-50">
+                                {feedbackSending[ticket.ticket_id] ? 'Salvando...' : 'Salvar avaliação'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Confirmação de salvo */}
+                        {!feedbackOpen[ticket.ticket_id] && feedbacks[ticket.ticket_id]?.type && (
+                          <p className="mt-2 text-[10px] text-muted">
+                            {feedbacks[ticket.ticket_id]?.note
+                              ? `Avaliação salva · "${feedbacks[ticket.ticket_id]!.note!.slice(0, 60)}${feedbacks[ticket.ticket_id]!.note!.length > 60 ? '…' : ''}"`
+                              : 'Avaliação salva — adicione uma justificativa para enriquecer o treinamento'}
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}

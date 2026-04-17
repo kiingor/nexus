@@ -103,3 +103,55 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
 }
+
+// ── Monitoria Types ──
+
+export interface QuestionarioCriterio {
+  criterio: string
+  nota: number
+  peso: number
+  justificativa: string
+}
+
+export interface QuestionarioAvaliacao {
+  criterios: QuestionarioCriterio[]
+  pontos_fortes: string[]
+  pontos_melhoria: string[]
+  resumo: string
+}
+
+// Questionario pode vir como string (formato do n8n) ou objeto estruturado (legado)
+export type Questionario = string | QuestionarioAvaliacao | null
+
+export interface QuestionarioItem {
+  criterio: string
+  status: string // "Sim" | "Não" | "NA" | outro
+  justificativa: string
+}
+
+export interface QuestionarioParsed {
+  resumo: string
+  items: QuestionarioItem[]
+}
+
+export interface MonitoriaRecord {
+  id: string
+  nota_avaliacao: number | string | null
+  data_avaliacao: string | null
+  transcricao: string | null
+  nota_cliente: number | string | null
+  ramal: string | null
+  numero_contato: string | null
+  questionario: Questionario
+  created_at: string
+}
+
+export interface MonitoriaInput {
+  nota_avaliacao?: number | string | null
+  data_avaliacao?: string | null
+  transcricao?: string | null
+  nota_cliente?: number | string | null
+  ramal?: string | null
+  numero_contato?: string | null
+  questionario?: Questionario
+}

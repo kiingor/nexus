@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { getOpenAIClient } from '@/lib/openai'
 import { createServerClient } from '@/lib/supabase/server'
 import { generateQueryEmbedding } from '@/lib/embeddings'
+import { buildRAGContext, type RAGMatch } from '@/lib/rag-context'
 import type { InstructionContent, ErrorContent } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
@@ -43,25 +44,6 @@ function buildKnowledgeContext(items: Array<{
       if (content.orientation) text += `\nOrientação: ${content.orientation}`
       sections.push(text)
     }
-  }
-
-  return sections.join('\n\n---\n\n')
-}
-
-function buildRAGContext(matches: Array<{
-  chunk_text: string
-  similarity: number
-  item_title: string
-}>): string {
-  if (!matches || matches.length === 0) return ''
-
-  const seen = new Set<string>()
-  const sections: string[] = []
-
-  for (const match of matches) {
-    if (seen.has(match.item_title)) continue
-    seen.add(match.item_title)
-    sections.push(match.chunk_text)
   }
 
   return sections.join('\n\n---\n\n')
@@ -149,26 +131,24 @@ export async function POST(request: NextRequest) {
     try {
       const queryEmbedding = await generateQueryEmbedding(userMessage.content)
 
-      const { data: matches, error: rpcError } = await supabase.rpc('match_documents_openai', {
+      const { data: matches, error: rpcError } = await supabase.rpc('match_items_openai', {
         query_embedding: JSON.stringify(queryEmbedding),
-        match_threshold: 0.65,
         match_count: 10,
-        filter_product_id: productId,
+        filter: productId ? { product_id: productId } : {},
       })
 
       if (!rpcError && matches && matches.length > 0) {
-        knowledgeContext = buildRAGContext(matches)
+        knowledgeContext = buildRAGContext(matches as RAGMatch[])
         usedRAG = true
       } else if (productId) {
         // No results for this product — try global search
-        const { data: globalMatches, error: globalErr } = await supabase.rpc('match_documents_openai', {
+        const { data: globalMatches, error: globalErr } = await supabase.rpc('match_items_openai', {
           query_embedding: JSON.stringify(queryEmbedding),
-          match_threshold: 0.65,
           match_count: 10,
-          filter_product_id: null,
+          filter: {},
         })
         if (!globalErr && globalMatches && globalMatches.length > 0) {
-          knowledgeContext = buildRAGContext(globalMatches)
+          knowledgeContext = buildRAGContext(globalMatches as RAGMatch[])
           usedRAG = true
         }
       }

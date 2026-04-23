@@ -1,8 +1,12 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { generateQueryEmbedding } from '@/lib/embeddings'
+import { buildRAGContext, type RAGMatch } from '@/lib/rag-context'
 import type { InstructionContent, ErrorContent } from '@/lib/types'
 
 export interface KnowledgeMatch {
+  item_id: string
+  chunk_type: 'item_full' | 'step' | 'error_full'
+  step_number: number | null
   item_title: string
   chunk_text: string
   similarity: number
@@ -14,7 +18,21 @@ export interface SearchKnowledgeParams {
   query: string
   productSlug?: string
   limit?: number
+  /** @deprecated kept for backward compatibility; no longer applied */
   matchThreshold?: number
+}
+
+function toKnowledgeMatch(row: RAGMatch): KnowledgeMatch {
+  return {
+    item_id: row.metadata.item_id,
+    chunk_type: row.metadata.chunk_type,
+    step_number: row.metadata.step_number,
+    item_title: row.metadata.item_title,
+    chunk_text: row.content,
+    similarity: row.similarity,
+    module_name: row.metadata.module_name ?? null,
+    product_name: row.metadata.product_name ?? null,
+  }
 }
 
 export interface SearchKnowledgeResult {
@@ -65,18 +83,6 @@ function buildKnowledgeContext(items: Array<{
   return sections.join('\n\n---\n\n')
 }
 
-function buildRAGContext(matches: KnowledgeMatch[]): string {
-  if (!matches || matches.length === 0) return ''
-  const seen = new Set<string>()
-  const sections: string[] = []
-  for (const match of matches) {
-    if (seen.has(match.item_title)) continue
-    seen.add(match.item_title)
-    sections.push(match.chunk_text)
-  }
-  return sections.join('\n\n---\n\n')
-}
-
 /**
  * Resolve productSlug to id/name. Returns null id for "todos os produtos".
  */
@@ -102,37 +108,37 @@ export async function searchKnowledge(
 ): Promise<SearchKnowledgeResult> {
   const { query, productSlug } = params
   const limit = params.limit ?? 10
-  const matchThreshold = params.matchThreshold ?? 0.65
 
   const { id: productId, name: productName } = await resolveProduct(productSlug)
 
   const supabase = createServerClient()
 
   let matches: KnowledgeMatch[] = []
+  let ragRows: RAGMatch[] = []
   let usedRAG = false
 
   try {
     const queryEmbedding = await generateQueryEmbedding(query)
 
-    const { data: ragMatches, error } = await supabase.rpc('match_documents_openai', {
+    const { data: ragMatches, error } = await supabase.rpc('match_items_openai', {
       query_embedding: JSON.stringify(queryEmbedding),
-      match_threshold: matchThreshold,
       match_count: limit,
-      filter_product_id: productId,
+      filter: productId ? { product_id: productId } : {},
     })
 
     if (!error && ragMatches && ragMatches.length > 0) {
-      matches = ragMatches as KnowledgeMatch[]
+      ragRows = ragMatches as RAGMatch[]
+      matches = ragRows.map(toKnowledgeMatch)
       usedRAG = true
     } else if (productId) {
-      const { data: globalMatches, error: gErr } = await supabase.rpc('match_documents_openai', {
+      const { data: globalMatches, error: gErr } = await supabase.rpc('match_items_openai', {
         query_embedding: JSON.stringify(queryEmbedding),
-        match_threshold: matchThreshold,
         match_count: limit,
-        filter_product_id: null,
+        filter: {},
       })
       if (!gErr && globalMatches && globalMatches.length > 0) {
-        matches = globalMatches as KnowledgeMatch[]
+        ragRows = globalMatches as RAGMatch[]
+        matches = ragRows.map(toKnowledgeMatch)
         usedRAG = true
       }
     }
@@ -143,7 +149,7 @@ export async function searchKnowledge(
   let fallbackContext = ''
 
   if (usedRAG) {
-    fallbackContext = buildRAGContext(matches)
+    fallbackContext = buildRAGContext(ragRows)
   } else {
     let items
     if (productId) {

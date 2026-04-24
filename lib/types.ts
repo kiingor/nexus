@@ -202,6 +202,8 @@ export interface AtendimentoRecord {
   duracao_segundos: number | null
   problema_extraido: ProblemaExtraido | null
   resolvibilidade: Record<string, unknown> | null
+  custo_real: number | string | null
+  sentimento_cliente: string | null
   criado_em: string | null
 }
 

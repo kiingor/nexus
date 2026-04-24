@@ -2,6 +2,7 @@
 
 import { Building2, Calendar, Clock, Phone } from 'lucide-react'
 import type { AtendimentoRecord } from '@/lib/types'
+import { formatCusto, sentimentoBadge } from '@/lib/atendimentos'
 
 interface Props {
   records: AtendimentoRecord[]
@@ -65,6 +66,8 @@ export function AtendimentosList({ records, onSelect }: Props) {
               <th className="px-4 py-3 font-medium">Empresa</th>
               <th className="px-4 py-3 font-medium">Telefone</th>
               <th className="px-4 py-3 font-medium">Duração</th>
+              <th className="px-4 py-3 font-medium">Custo</th>
+              <th className="px-4 py-3 font-medium">Sentimento</th>
               <th className="px-4 py-3 font-medium">Problema</th>
             </tr>
           </thead>
@@ -127,6 +130,23 @@ export function AtendimentosList({ records, onSelect }: Props) {
                       <Clock size={12} className="text-muted" />
                       {formatDuration(r.duracao_segundos)}
                     </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-primary whitespace-nowrap">
+                    {formatCusto(r.custo_real)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const b = sentimentoBadge(r.sentimento_cliente)
+                      return b ? (
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${b.cls}`}
+                        >
+                          {b.label}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted">—</span>
+                      )
+                    })()}
                   </td>
                   <td className="px-4 py-3 text-sm text-secondary max-w-[320px]">
                     <p className="truncate" title={problema}>

@@ -2,8 +2,9 @@
 
 import { GlassModal } from '@/components/ui/GlassModal'
 import { Spinner } from '@/components/ui/Spinner'
-import { Building2, Phone, MessageSquare, Star, Monitor, Calendar } from 'lucide-react'
+import { Building2, Phone, MessageSquare, Star, Monitor, Calendar, DollarSign, Smile } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
+import { formatCusto, sentimentoBadge } from '@/lib/atendimentos'
 
 interface Props {
   record: AtendimentoRecord | null
@@ -50,6 +51,29 @@ export function AtendimentoDetailModal({
           <Meta icon={<Calendar size={12} />} label="Início" value={fmt(detail.data_hora_chegada)} />
           <Meta icon={<Calendar size={12} />} label="Fim" value={fmt(detail.data_hora_saida)} />
           <Meta label="Duração" value={duration(detail.duracao_segundos)} />
+          <Meta icon={<DollarSign size={12} />} label="Custo" value={formatCusto(detail.custo_real)} />
+        </div>
+
+        {/* Sentimento + ID */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <div className="glass p-3">
+            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted mb-1">
+              <Smile size={12} />
+              Sentimento do cliente
+            </div>
+            {(() => {
+              const b = sentimentoBadge(detail.sentimento_cliente)
+              return b ? (
+                <span
+                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${b.cls}`}
+                >
+                  {b.label}
+                </span>
+              ) : (
+                <p className="text-sm text-muted">—</p>
+              )
+            })()}
+          </div>
           <Meta label="ID Ligação" value={detail.id_ligacao} />
         </div>
 

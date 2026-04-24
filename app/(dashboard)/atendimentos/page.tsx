@@ -5,11 +5,13 @@ import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { Spinner } from '@/components/ui/Spinner'
 import { AtendimentosList } from '@/components/atendimentos/AtendimentosList'
 import { AtendimentoDetailModal } from '@/components/atendimentos/AtendimentoDetailModal'
-import { Headphones, CheckCircle2, ArrowRightLeft, XCircle, Filter } from 'lucide-react'
+import { Headphones, CheckCircle2, ArrowRightLeft, XCircle, Filter, DollarSign } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
+import { formatCusto, toNumber } from '@/lib/atendimentos'
 
 type StatusFilter = 'all' | 'transferida' | 'resolvida_ia' | 'interrompida'
 type DestinoFilter = 'all' | 'servicedesk' | 'financeiro'
+type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
 
 // Intervalo [from, to) no fuso UTC-3 (horário de Brasília)
 function buildDateRange(day: string, hour: string): { from?: string; to?: string } {
@@ -52,6 +54,7 @@ export default function AtendimentosPage() {
   const [search, setSearch] = useState('')
   const [dayFilter, setDayFilter] = useState('')
   const [hourFilter, setHourFilter] = useState<'all' | string>('all')
+  const [sentimentoFilter, setSentimentoFilter] = useState<SentimentoFilter>('all')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -95,20 +98,33 @@ export default function AtendimentosPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return records
-    return records.filter((r) =>
+    let out = records
+    if (sentimentoFilter !== 'all') {
+      out = out.filter((r) => {
+        const s = (r.sentimento_cliente || '').toLowerCase()
+        if (sentimentoFilter === 'positivo')
+          return /positiv|satisfe|feliz|bom|[óo]timo|excelente/i.test(s)
+        if (sentimentoFilter === 'negativo')
+          return /negativ|insatisfe|irrita|frustra|ruim|p[ée]ssimo|raiva/i.test(s)
+        if (sentimentoFilter === 'neutro') return /neutr|ok|indifer/i.test(s)
+        return true
+      })
+    }
+    if (!q) return out
+    return out.filter((r) =>
       [r.nome_empresa, r.cnpj, r.phone, r.cliente_nome, r.problema_relatado]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
     )
-  }, [records, search])
+  }, [records, search, sentimentoFilter])
 
   const stats = useMemo(() => {
     const total = records.length
     const resolvidas = records.filter((r) => r.status === 'resolvida_ia').length
     const transferidas = records.filter((r) => r.status === 'transferida').length
     const interrompidas = records.filter((r) => r.status === 'interrompida').length
-    return { total, resolvidas, transferidas, interrompidas }
+    const custoTotal = records.reduce((sum, r) => sum + (toNumber(r.custo_real) ?? 0), 0)
+    return { total, resolvidas, transferidas, interrompidas, custoTotal }
   }, [records])
 
   return (
@@ -125,7 +141,7 @@ export default function AtendimentosPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <StatCard icon={<Headphones size={18} />} label="Total" value={String(stats.total)} />
         <StatCard
           icon={<CheckCircle2 size={18} />}
@@ -144,6 +160,11 @@ export default function AtendimentosPage() {
           label="Interrompidas"
           value={String(stats.interrompidas)}
           accent="red"
+        />
+        <StatCard
+          icon={<DollarSign size={18} />}
+          label="Custo total"
+          value={formatCusto(stats.custoTotal)}
         />
       </div>
 
@@ -173,6 +194,17 @@ export default function AtendimentosPage() {
           <option value="all">Todos destinos</option>
           <option value="servicedesk">ServiceDesk</option>
           <option value="financeiro">Financeiro</option>
+        </select>
+
+        <select
+          value={sentimentoFilter}
+          onChange={(e) => setSentimentoFilter(e.target.value as SentimentoFilter)}
+          className="bg-glass border border-glass-border rounded-xl px-3 py-1.5 text-sm text-primary outline-none focus:border-orange-500/40"
+        >
+          <option value="all">Todos sentimentos</option>
+          <option value="positivo">Positivo</option>
+          <option value="neutro">Neutro</option>
+          <option value="negativo">Negativo</option>
         </select>
 
         <input

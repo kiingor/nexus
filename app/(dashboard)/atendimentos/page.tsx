@@ -112,8 +112,16 @@ export default function AtendimentosPage() {
     }
     if (!q) return out
     return out.filter((r) =>
-      [r.nome_empresa, r.cnpj, r.phone, r.cliente_nome, r.problema_relatado]
-        .filter(Boolean)
+      [
+        r.nome_empresa,
+        r.cnpj,
+        r.phone,
+        r.cliente_nome,
+        r.problema_relatado,
+        r.id_ligacao,
+        r.id,
+      ]
+        .filter((v) => v != null && v !== '')
         .some((v) => String(v).toLowerCase().includes(q))
     )
   }, [records, search, sentimentoFilter])
@@ -260,7 +268,7 @@ export default function AtendimentosPage() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar empresa, CNPJ, telefone..."
+          placeholder="Buscar empresa, CNPJ, telefone, ID da ligação..."
           className="flex-1 min-w-[200px] bg-glass border border-glass-border rounded-xl px-3 py-1.5 text-sm text-primary outline-none focus:border-orange-500/40 placeholder:text-muted"
         />
       </div>

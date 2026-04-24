@@ -1,8 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import { GlassModal } from '@/components/ui/GlassModal'
 import { Spinner } from '@/components/ui/Spinner'
-import { Building2, Phone, MessageSquare, Star, Monitor, Calendar, DollarSign, Smile } from 'lucide-react'
+import { Building2, Phone, MessageSquare, Star, Monitor, Calendar, DollarSign, Smile, Copy, Check } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
 import { formatCusto, sentimentoBadge } from '@/lib/atendimentos'
 
@@ -74,7 +75,7 @@ export function AtendimentoDetailModal({
               )
             })()}
           </div>
-          <Meta label="ID Ligação" value={detail.id_ligacao} />
+          <IdLigacaoMeta value={detail.id_ligacao} />
         </div>
 
         {/* Cliente */}
@@ -206,6 +207,50 @@ function Meta({
       <p className="text-sm text-primary truncate">
         {value != null && value !== '' ? String(value) : '—'}
       </p>
+    </div>
+  )
+}
+
+function IdLigacaoMeta({ value }: { value: string | null | undefined }) {
+  const [copied, setCopied] = useState(false)
+  const has = value != null && value !== ''
+
+  async function handleCopy() {
+    if (!has) return
+    try {
+      await navigator.clipboard.writeText(String(value))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // clipboard may be blocked — ignore silently
+    }
+  }
+
+  return (
+    <div className="glass p-3">
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted mb-1">
+        ID Ligação
+      </div>
+      <div className="flex items-center gap-2">
+        <p className="text-sm text-primary truncate flex-1 font-mono" title={has ? String(value) : undefined}>
+          {has ? String(value) : '—'}
+        </p>
+        {has && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            title={copied ? 'Copiado!' : 'Copiar ID'}
+            aria-label="Copiar ID da ligação"
+            className={`shrink-0 p-1.5 rounded-lg border transition-colors cursor-pointer ${
+              copied
+                ? 'bg-green-500/10 border-green-500/25 text-green-400'
+                : 'bg-glass border-glass-border text-muted hover:text-primary hover:border-orange-500/40'
+            }`}
+          >
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

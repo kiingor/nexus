@@ -155,3 +155,62 @@ export interface MonitoriaInput {
   numero_contato?: string | null
   questionario?: Questionario
 }
+
+// ── Atendimentos (Central de Ligações Suporte IA) ──
+
+export type AtendimentoStatus = 'transferida' | 'resolvida_ia' | 'interrompida'
+export type AtendimentoDestino = 'servicedesk' | 'financeiro' | null
+
+export interface ProblemaExtraidoDetalhe {
+  categoria?: string | null
+  modulo_afetado?: string | null
+  descricao_tecnica?: string | null
+  descricao_cliente?: string | null
+  acao_que_disparou?: string | null
+  mensagem_erro?: string | null
+  frequencia?: string | null
+  impacto_relatado?: string | null
+}
+
+export interface ProblemaExtraido {
+  tem_problema_extraivel: boolean
+  motivo_descarte?: string | null
+  problema?: ProblemaExtraidoDetalhe | null
+  citacoes_relevantes?: string[] | null
+  confianca?: 'alta' | 'media' | 'baixa' | string | null
+}
+
+export interface AtendimentoRecord {
+  id: number
+  id_ligacao: string | null
+  status: AtendimentoStatus | string | null
+  destino: AtendimentoDestino | string | null
+  cnpj: string | null
+  nome_empresa: string | null
+  cliente_nome: string | null
+  phone: string | null
+  whatsapp_contato: string | null
+  numero_anydesk: string | null
+  problema_relatado: string | null
+  solucao_aplicada: string | null
+  transcricao: string | null
+  turno_agente: string | null
+  turno_cliente: string | null
+  transcricao_formatada: string | null
+  data_hora_chegada: string | null
+  data_hora_saida: string | null
+  duracao_segundos: number | null
+  problema_extraido: ProblemaExtraido | null
+  resolvibilidade: Record<string, unknown> | null
+  criado_em: string | null
+}
+
+export interface AvaliacaoAtendimentoRecord {
+  id: number
+  nota: number | null
+  phone: string | null
+  cnpj: string | null
+  name_assistente: string | null
+  id_atendimento: number | null
+  criado_em: string | null
+}

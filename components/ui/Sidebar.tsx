@@ -80,6 +80,16 @@ const navItems = [
     ),
   },
   {
+    label: 'Atendimentos',
+    href: '/atendimentos',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M4 3a1 1 0 011-1h2.5a1 1 0 011 .76l.7 2.78a1 1 0 01-.27.96L6.9 8.1a11 11 0 005 5l1.6-2.03a1 1 0 011-.27l2.78.7a1 1 0 01.76 1V15a2 2 0 01-2 2A13 13 0 014 5V3z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        <circle cx="15" cy="5" r="2" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    ),
+  },
+  {
     label: 'Monitoria',
     href: '/monitoria',
     icon: (

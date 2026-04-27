@@ -14,10 +14,14 @@ export async function GET(request: NextRequest) {
   const to = searchParams.get('to')
   const soComProblema = searchParams.get('com_problema') === 'true'
 
+  // Ordena por criado_em desc, mas leva nulos pro fim — interrompidas
+  // costumam ter criado_em nulo. Fallback por id desc garante que ainda
+  // venham dentro do limit, em ordem de inserção.
   let query = supabase
     .from('atendimentos')
     .select('*')
-    .order('criado_em', { ascending: false })
+    .order('criado_em', { ascending: false, nullsFirst: false })
+    .order('id', { ascending: false })
     .limit(limit)
 
   if (status) query = query.eq('status', status)

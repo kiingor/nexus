@@ -5,7 +5,8 @@ import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { Spinner } from '@/components/ui/Spinner'
 import { AtendimentosList } from '@/components/atendimentos/AtendimentosList'
 import { AtendimentoDetailModal } from '@/components/atendimentos/AtendimentoDetailModal'
-import { Headphones, CheckCircle2, ArrowRightLeft, XCircle, Filter, DollarSign, PhoneCall } from 'lucide-react'
+import Link from 'next/link'
+import { Headphones, CheckCircle2, ArrowRightLeft, XCircle, Filter, DollarSign, PhoneCall, Sparkles } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
 import { formatCusto, toNumber } from '@/lib/atendimentos'
 
@@ -147,6 +148,13 @@ export default function AtendimentosPage() {
             Registro das ligações atendidas pela Renata (Central IA)
           </p>
         </div>
+        <Link
+          href="/atendimentos/gestor-prompt"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500/20 transition-colors text-sm font-medium"
+        >
+          <Sparkles size={14} />
+          Gestor de Prompt
+        </Link>
       </div>
 
       {/* Stats */}

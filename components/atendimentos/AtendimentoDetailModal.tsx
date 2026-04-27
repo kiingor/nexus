@@ -144,13 +144,10 @@ export function AtendimentoDetailModal({
         )}
 
         {/* Transcrição */}
-        {(detail.transcricao_formatada || detail.transcricao) && (
-          <Section title="Transcrição">
-            <pre className="text-xs text-secondary bg-glass border border-glass-border rounded-xl p-3 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-[320px]">
-              {detail.transcricao_formatada || detail.transcricao}
-            </pre>
-          </Section>
-        )}
+        <TranscricaoBlock
+          formatada={detail.transcricao_formatada}
+          original={detail.transcricao}
+        />
 
         {/* Avaliações */}
         <Section title="Avaliações do Cliente">
@@ -186,6 +183,99 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h3 className="text-xs uppercase tracking-wider text-muted mb-2">{title}</h3>
       {children}
     </div>
+  )
+}
+
+function TranscricaoBlock({
+  formatada,
+  original,
+}: {
+  formatada: string | null
+  original: string | null
+}) {
+  const hasFormatada = !!formatada && formatada.trim() !== ''
+  const hasOriginal = !!original && original.trim() !== ''
+
+  const [view, setView] = useState<'formatada' | 'original'>(
+    hasFormatada ? 'formatada' : 'original'
+  )
+  const [copied, setCopied] = useState(false)
+
+  if (!hasFormatada && !hasOriginal) {
+    return (
+      <Section title="Transcrição">
+        <p className="text-sm text-muted">Transcrição indisponível.</p>
+      </Section>
+    )
+  }
+
+  const showing = view === 'formatada' && hasFormatada ? formatada : original
+  const text = String(showing ?? '')
+
+  async function copyAll() {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // ignore
+    }
+  }
+
+  return (
+    <Section title="Transcrição">
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        {hasFormatada && hasOriginal ? (
+          <div className="inline-flex rounded-xl border border-glass-border overflow-hidden text-xs">
+            <button
+              type="button"
+              onClick={() => setView('formatada')}
+              className={`px-3 py-1.5 cursor-pointer transition-colors ${
+                view === 'formatada'
+                  ? 'bg-orange-500/10 text-orange-400'
+                  : 'text-muted hover:text-primary hover:bg-white/5'
+              }`}
+            >
+              Formatada
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('original')}
+              className={`px-3 py-1.5 cursor-pointer transition-colors border-l border-glass-border ${
+                view === 'original'
+                  ? 'bg-orange-500/10 text-orange-400'
+                  : 'text-muted hover:text-primary hover:bg-white/5'
+              }`}
+            >
+              Original (Supabase)
+            </button>
+          </div>
+        ) : (
+          <span className="text-[11px] uppercase tracking-wider text-muted">
+            {hasFormatada ? 'Formatada' : 'Original (Supabase)'}
+          </span>
+        )}
+
+        <button
+          type="button"
+          onClick={copyAll}
+          title={copied ? 'Copiado!' : 'Copiar transcrição'}
+          aria-label="Copiar transcrição"
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs transition-colors cursor-pointer ${
+            copied
+              ? 'bg-green-500/10 border-green-500/25 text-green-400'
+              : 'bg-glass border-glass-border text-muted hover:text-primary hover:border-orange-500/40'
+          }`}
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? 'Copiado!' : 'Copiar'}
+        </button>
+      </div>
+
+      <pre className="text-xs text-secondary bg-glass border border-glass-border rounded-xl p-3 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-[320px]">
+        {text}
+      </pre>
+    </Section>
   )
 }
 

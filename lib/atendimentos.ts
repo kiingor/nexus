@@ -1,5 +1,22 @@
 // Helpers compartilhados para a aba de Atendimentos
 
+// duracao_segundos vem do banco em MILISSEGUNDOS (apesar do nome).
+// Converte pra segundos pra exibição e cálculos.
+export function duracaoToSegundos(v: number | null | undefined): number | null {
+  if (v == null) return null
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return null
+  return Math.round(n / 1000)
+}
+
+export function formatDuracao(v: number | null | undefined): string {
+  const totalSec = duracaoToSegundos(v)
+  if (totalSec == null) return '—'
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec % 60
+  return `${m}m${String(s).padStart(2, '0')}s`
+}
+
 export function toNumber(v: number | string | null | undefined): number | null {
   if (v == null) return null
   if (typeof v === 'number') return Number.isFinite(v) ? v : null

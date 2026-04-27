@@ -2,7 +2,7 @@
 
 import { Building2, Calendar, Clock, Phone } from 'lucide-react'
 import type { AtendimentoRecord } from '@/lib/types'
-import { formatCusto, sentimentoBadge } from '@/lib/atendimentos'
+import { formatCusto, formatDuracao, sentimentoBadge } from '@/lib/atendimentos'
 
 interface Props {
   records: AtendimentoRecord[]
@@ -22,13 +22,6 @@ function formatDate(iso: string | null): string {
   } catch {
     return iso
   }
-}
-
-function formatDuration(seconds: number | null): string {
-  if (seconds == null) return '—'
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}m${String(s).padStart(2, '0')}s`
 }
 
 function statusBadge(status: string | null): { label: string; cls: string } {
@@ -130,7 +123,7 @@ export function AtendimentosList({ records, onSelect }: Props) {
                   <td className="px-4 py-3 text-sm text-secondary">
                     <div className="flex items-center gap-1.5">
                       <Clock size={12} className="text-muted" />
-                      {formatDuration(r.duracao_segundos)}
+                      {formatDuracao(r.duracao_segundos)}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-primary whitespace-nowrap">

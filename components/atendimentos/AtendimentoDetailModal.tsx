@@ -5,7 +5,7 @@ import { GlassModal } from '@/components/ui/GlassModal'
 import { Spinner } from '@/components/ui/Spinner'
 import { Building2, Phone, MessageSquare, Star, Monitor, Calendar, DollarSign, Smile, Copy, Check } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
-import { formatCusto, sentimentoBadge } from '@/lib/atendimentos'
+import { formatCusto, formatDuracao, sentimentoBadge } from '@/lib/atendimentos'
 
 interface Props {
   record: AtendimentoRecord | null
@@ -24,12 +24,6 @@ function fmt(iso: string | null) {
   }
 }
 
-function duration(sec: number | null) {
-  if (sec == null) return '—'
-  const m = Math.floor(sec / 60)
-  const s = sec % 60
-  return `${m}m${String(s).padStart(2, '0')}s`
-}
 
 export function AtendimentoDetailModal({
   record,
@@ -51,7 +45,7 @@ export function AtendimentoDetailModal({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
           <Meta icon={<Calendar size={12} />} label="Início" value={fmt(detail.data_hora_chegada)} />
           <Meta icon={<Calendar size={12} />} label="Fim" value={fmt(detail.data_hora_saida)} />
-          <Meta label="Duração" value={duration(detail.duracao_segundos)} />
+          <Meta label="Duração" value={formatDuracao(detail.duracao_segundos)} />
           <Meta icon={<DollarSign size={12} />} label="Custo" value={formatCusto(detail.custo_real)} />
         </div>
 

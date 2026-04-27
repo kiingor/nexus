@@ -75,7 +75,9 @@ function buildAtendimentoSummary(a: AtendimentoRecord): string {
   if (a.destino) lines.push(`- Destino: ${a.destino}`)
   if (a.nome_empresa) lines.push(`- Empresa: ${a.nome_empresa}`)
   if (a.sentimento_cliente) lines.push(`- Sentimento: ${a.sentimento_cliente}`)
-  if (a.duracao_segundos != null) lines.push(`- Duração: ${a.duracao_segundos}s`)
+  // duracao_segundos vem do banco em ms; converte pra segundos no resumo da IA
+  if (a.duracao_segundos != null)
+    lines.push(`- Duração: ${Math.round(a.duracao_segundos / 1000)}s`)
   if (a.problema_relatado) lines.push(`- Problema relatado: ${a.problema_relatado}`)
   if (a.solucao_aplicada) lines.push(`- Solução aplicada: ${a.solucao_aplicada}`)
   const pe = a.problema_extraido

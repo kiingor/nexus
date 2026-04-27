@@ -9,7 +9,7 @@
  * Resposta: { suggestions: Suggestion[] }
  */
 
-import type Anthropic from '@anthropic-ai/sdk'
+import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { getAnthropicClient } from '@/lib/anthropic'
@@ -122,7 +122,11 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'Nenhum atendimento encontrado' }, { status: 404 })
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  // Chave do servidor tem precedência; cliente pode mandar via header como fallback
+  const headerKey = request.headers.get('x-anthropic-key')?.trim() || null
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim() || headerKey
+
+  if (!apiKey) {
     return Response.json(
       { error: 'ANTHROPIC_API_KEY não configurada no servidor' },
       { status: 503 }
@@ -145,7 +149,11 @@ ${summaries}
 Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL no formato JSON especificado.`
 
   try {
-    const client = getAnthropicClient()
+    // Usa client do servidor quando a chave vem do env, senão instancia
+    // um novo com a chave do header (não mantém singleton com chave de cliente)
+    const client = process.env.ANTHROPIC_API_KEY
+      ? getAnthropicClient()
+      : new Anthropic({ apiKey })
     const response = await client.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 4096,

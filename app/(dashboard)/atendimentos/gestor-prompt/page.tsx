@@ -12,6 +12,10 @@ import {
   Check,
   Filter,
   AlertCircle,
+  Key,
+  Eye,
+  EyeOff,
+  Trash2,
 } from 'lucide-react'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { Spinner } from '@/components/ui/Spinner'
@@ -36,8 +40,12 @@ const CATEGORY_COLOR: Record<PromptSuggestion['categoria'], string> = {
   outro: 'bg-glass border-glass-border text-secondary',
 }
 
+const LS_PROMPT_KEY = 'nexus:gestor-prompt:current'
+const LS_API_KEY = 'nexus:gestor-prompt:anthropic-key'
+
 export default function GestorPromptPage() {
   const [currentPrompt, setCurrentPrompt] = useState('')
+  const [hydrated, setHydrated] = useState(false)
 
   const [records, setRecords] = useState<AtendimentoRecord[]>([])
   const [loadingRecords, setLoadingRecords] = useState(true)
@@ -52,6 +60,64 @@ export default function GestorPromptPage() {
 
   const [updatedPrompt, setUpdatedPrompt] = useState('')
   const [copied, setCopied] = useState(false)
+
+  // ── API key (fallback quando não está setada no servidor) ───────────────
+  const [apiKey, setApiKey] = useState('')
+  const [needsApiKey, setNeedsApiKey] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)
+
+  // Hidratação do localStorage (prompt + key)
+  useEffect(() => {
+    try {
+      const savedPrompt = localStorage.getItem(LS_PROMPT_KEY) ?? ''
+      const savedKey = localStorage.getItem(LS_API_KEY) ?? ''
+      if (savedPrompt) setCurrentPrompt(savedPrompt)
+      if (savedKey) setApiKey(savedKey)
+    } catch {
+      // localStorage indisponível (SSR / privacy mode)
+    }
+    setHydrated(true)
+  }, [])
+
+  // Persiste prompt no localStorage com debounce simples
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      if (currentPrompt) localStorage.setItem(LS_PROMPT_KEY, currentPrompt)
+      else localStorage.removeItem(LS_PROMPT_KEY)
+    } catch {
+      // ignore
+    }
+  }, [currentPrompt, hydrated])
+
+  // Persiste API key no localStorage
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      if (apiKey) localStorage.setItem(LS_API_KEY, apiKey)
+      else localStorage.removeItem(LS_API_KEY)
+    } catch {
+      // ignore
+    }
+  }, [apiKey, hydrated])
+
+  function clearSavedPrompt() {
+    setCurrentPrompt('')
+    try {
+      localStorage.removeItem(LS_PROMPT_KEY)
+    } catch {
+      // ignore
+    }
+  }
+
+  function clearApiKey() {
+    setApiKey('')
+    try {
+      localStorage.removeItem(LS_API_KEY)
+    } catch {
+      // ignore
+    }
+  }
 
   // ── Carregar atendimentos ──────────────────────────────────────────────
   const loadRecords = useCallback(async () => {
@@ -122,15 +188,30 @@ export default function GestorPromptPage() {
 
     setGenerating(true)
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (apiKey.trim()) headers['x-anthropic-key'] = apiKey.trim()
+
       const res = await fetch('/api/atendimentos/gestor-prompt', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           currentPrompt,
           atendimentoIds: Array.from(selectedIds),
         }),
       })
       const data = await res.json()
+
+      // Servidor sem chave configurada → pede ao usuário
+      if (res.status === 503) {
+        setNeedsApiKey(true)
+        setError(
+          apiKey.trim()
+            ? 'A chave salva foi rejeitada pelo servidor. Confira ou cole uma nova abaixo.'
+            : 'O servidor não tem ANTHROPIC_API_KEY configurada. Cole sua chave abaixo para usar pelo navegador.'
+        )
+        return
+      }
+
       if (!res.ok) {
         setError(data?.error || 'Erro ao gerar sugestões')
         return
@@ -139,6 +220,7 @@ export default function GestorPromptPage() {
       setSuggestions(list)
       // Por padrão, todas começam marcadas
       setAppliedIds(new Set(list.map((s) => s.id)))
+      setNeedsApiKey(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao gerar sugestões')
     } finally {
@@ -233,9 +315,22 @@ export default function GestorPromptPage() {
 
       {/* Step 1 — Prompt atual */}
       <div className="glass p-5 mb-5">
-        <h2 className="text-xs uppercase tracking-wider text-muted mb-3">
-          1. Prompt atual
-        </h2>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <h2 className="text-xs uppercase tracking-wider text-muted">
+            1. Prompt atual
+          </h2>
+          {currentPrompt && (
+            <button
+              type="button"
+              onClick={clearSavedPrompt}
+              className="inline-flex items-center gap-1.5 text-[11px] text-muted hover:text-red-400 transition-colors"
+              title="Apagar prompt salvo"
+            >
+              <Trash2 size={11} />
+              Apagar prompt salvo
+            </button>
+          )}
+        </div>
         <textarea
           value={currentPrompt}
           onChange={(e) => setCurrentPrompt(e.target.value)}
@@ -243,10 +338,66 @@ export default function GestorPromptPage() {
           rows={10}
           className="w-full bg-glass border border-glass-border rounded-xl px-3 py-2 text-sm text-primary outline-none focus:border-orange-500/40 placeholder:text-muted font-mono"
         />
-        <p className="text-[11px] text-muted mt-2">
+        <p className="text-[11px] text-muted mt-2 flex items-center gap-1.5">
           {currentPrompt.length.toLocaleString('pt-BR')} caracteres
+          {hydrated && currentPrompt && (
+            <span className="text-green-400">· salvo localmente</span>
+          )}
         </p>
       </div>
+
+      {/* API Key (quando o servidor não tem ANTHROPIC_API_KEY) */}
+      {(needsApiKey || apiKey) && (
+        <div
+          className={`glass p-5 mb-5 ${
+            needsApiKey ? 'border-l-2 border-yellow-500/40' : ''
+          }`}
+        >
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <h2 className="text-xs uppercase tracking-wider text-muted flex items-center gap-1.5">
+              <Key size={12} />
+              Chave da Anthropic (fallback do navegador)
+            </h2>
+            {apiKey && (
+              <button
+                type="button"
+                onClick={clearApiKey}
+                className="inline-flex items-center gap-1.5 text-[11px] text-muted hover:text-red-400 transition-colors"
+                title="Apagar chave salva"
+              >
+                <Trash2 size={11} />
+                Apagar chave
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type={showApiKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="sk-ant-api03-..."
+              className="flex-1 bg-glass border border-glass-border rounded-xl px-3 py-2 text-sm text-primary outline-none focus:border-orange-500/40 placeholder:text-muted font-mono"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <button
+              type="button"
+              onClick={() => setShowApiKey((v) => !v)}
+              className="p-2 rounded-xl border border-glass-border bg-glass text-muted hover:text-primary"
+              title={showApiKey ? 'Ocultar' : 'Mostrar'}
+            >
+              {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+          </div>
+          <p className="text-[11px] text-muted mt-2 leading-relaxed">
+            Salvo no <span className="text-primary">localStorage</span> deste navegador
+            apenas. Enviado via header <code className="text-orange-400">x-anthropic-key</code>{' '}
+            só para <code className="text-orange-400">/api/atendimentos/gestor-prompt</code>.
+            O ideal é configurar <code className="text-orange-400">ANTHROPIC_API_KEY</code>{' '}
+            no servidor — esse campo é só fallback.
+          </p>
+        </div>
+      )}
 
       {/* Step 2 — Atendimentos */}
       <div className="glass p-5 mb-5">

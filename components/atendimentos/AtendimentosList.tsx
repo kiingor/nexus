@@ -33,6 +33,8 @@ function formatDuration(seconds: number | null): string {
 
 function statusBadge(status: string | null): { label: string; cls: string } {
   switch (status) {
+    case 'em_atendimento':
+      return { label: 'Em atendimento', cls: 'bg-blue-500/10 border-blue-500/25 text-blue-400' }
     case 'transferida':
       return { label: 'Transferida', cls: 'bg-yellow-500/10 border-yellow-500/25 text-yellow-400' }
     case 'resolvida_ia':

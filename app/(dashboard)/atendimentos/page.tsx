@@ -5,11 +5,11 @@ import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { Spinner } from '@/components/ui/Spinner'
 import { AtendimentosList } from '@/components/atendimentos/AtendimentosList'
 import { AtendimentoDetailModal } from '@/components/atendimentos/AtendimentoDetailModal'
-import { Headphones, CheckCircle2, ArrowRightLeft, XCircle, Filter, DollarSign } from 'lucide-react'
+import { Headphones, CheckCircle2, ArrowRightLeft, XCircle, Filter, DollarSign, PhoneCall } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
 import { formatCusto, toNumber } from '@/lib/atendimentos'
 
-type StatusFilter = 'all' | 'transferida' | 'resolvida_ia' | 'interrompida'
+type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 'interrompida'
 type DestinoFilter = 'all' | 'servicedesk' | 'financeiro'
 type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
 
@@ -128,11 +128,12 @@ export default function AtendimentosPage() {
 
   const stats = useMemo(() => {
     const total = records.length
+    const emAtendimento = records.filter((r) => r.status === 'em_atendimento').length
     const resolvidas = records.filter((r) => r.status === 'resolvida_ia').length
     const transferidas = records.filter((r) => r.status === 'transferida').length
     const interrompidas = records.filter((r) => r.status === 'interrompida').length
     const custoTotal = records.reduce((sum, r) => sum + (toNumber(r.custo_real) ?? 0), 0)
-    return { total, resolvidas, transferidas, interrompidas, custoTotal }
+    return { total, emAtendimento, resolvidas, transferidas, interrompidas, custoTotal }
   }, [records])
 
   return (
@@ -149,8 +150,14 @@ export default function AtendimentosPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
         <StatCard icon={<Headphones size={18} />} label="Total" value={String(stats.total)} />
+        <StatCard
+          icon={<PhoneCall size={18} />}
+          label="Em atendimento"
+          value={String(stats.emAtendimento)}
+          accent="blue"
+        />
         <StatCard
           icon={<CheckCircle2 size={18} />}
           label="Resolvidas IA"
@@ -189,6 +196,7 @@ export default function AtendimentosPage() {
           className="bg-glass border border-glass-border rounded-xl px-3 py-1.5 text-sm text-primary outline-none focus:border-orange-500/40"
         >
           <option value="all">Todos status</option>
+          <option value="em_atendimento">Em atendimento</option>
           <option value="transferida">Transferida</option>
           <option value="resolvida_ia">Resolvida IA</option>
           <option value="interrompida">Interrompida</option>
@@ -309,7 +317,7 @@ function StatCard({
   icon: React.ReactNode
   label: string
   value: string
-  accent?: 'green' | 'yellow' | 'red'
+  accent?: 'green' | 'yellow' | 'red' | 'blue'
 }) {
   const color =
     accent === 'green'
@@ -318,7 +326,9 @@ function StatCard({
         ? 'text-yellow-400'
         : accent === 'red'
           ? 'text-red-400'
-          : 'text-primary'
+          : accent === 'blue'
+            ? 'text-blue-400'
+            : 'text-primary'
 
   return (
     <div className="glass p-4">

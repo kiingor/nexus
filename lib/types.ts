@@ -158,7 +158,11 @@ export interface MonitoriaInput {
 
 // ── Atendimentos (Central de Ligações Suporte IA) ──
 
-export type AtendimentoStatus = 'transferida' | 'resolvida_ia' | 'interrompida'
+export type AtendimentoStatus =
+  | 'em_atendimento'
+  | 'transferida'
+  | 'resolvida_ia'
+  | 'interrompida'
 export type AtendimentoDestino = 'servicedesk' | 'financeiro' | null
 
 export interface ProblemaExtraidoDetalhe {

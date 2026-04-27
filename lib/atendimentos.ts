@@ -11,14 +11,14 @@ export function formatCusto(v: number | string | null | undefined): string {
   const n = toNumber(v)
   if (n == null) return '—'
   try {
-    return n.toLocaleString('pt-BR', {
+    return n.toLocaleString('en-US', {
       style: 'currency',
-      currency: 'BRL',
+      currency: 'USD',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })
   } catch {
-    return `R$ ${n.toFixed(2)}`
+    return `$${n.toFixed(2)}`
   }
 }
 

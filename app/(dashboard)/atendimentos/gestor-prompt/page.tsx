@@ -206,8 +206,8 @@ export default function GestorPromptPage() {
         setNeedsApiKey(true)
         setError(
           apiKey.trim()
-            ? 'A chave salva foi rejeitada pelo servidor. Confira ou cole uma nova abaixo.'
-            : 'O servidor não tem ANTHROPIC_API_KEY configurada. Cole sua chave abaixo para usar pelo navegador.'
+            ? 'A chave salva foi rejeitada pelo servidor. Confira ou cole uma nova do iarouter.'
+            : 'O servidor não tem chave do Softcom IA Router configurada. Cole sua chave abaixo para usar pelo navegador.'
         )
         return
       }
@@ -346,7 +346,7 @@ export default function GestorPromptPage() {
         </p>
       </div>
 
-      {/* API Key (quando o servidor não tem ANTHROPIC_API_KEY) */}
+      {/* API Key do Softcom IA Router (fallback) */}
       {(needsApiKey || apiKey) && (
         <div
           className={`glass p-5 mb-5 ${
@@ -356,7 +356,7 @@ export default function GestorPromptPage() {
           <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
             <h2 className="text-xs uppercase tracking-wider text-muted flex items-center gap-1.5">
               <Key size={12} />
-              Chave da Anthropic (fallback do navegador)
+              Chave do Softcom IA Router · Opus 4.6
             </h2>
             {apiKey && (
               <button
@@ -375,7 +375,7 @@ export default function GestorPromptPage() {
               type={showApiKey ? 'text' : 'password'}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-ant-api03-..."
+              placeholder="Cole sua chave do iarouter.softcomia.com..."
               className="flex-1 bg-glass border border-glass-border rounded-xl px-3 py-2 text-sm text-primary outline-none focus:border-orange-500/40 placeholder:text-muted font-mono"
               autoComplete="off"
               spellCheck={false}
@@ -390,10 +390,14 @@ export default function GestorPromptPage() {
             </button>
           </div>
           <p className="text-[11px] text-muted mt-2 leading-relaxed">
+            Endpoint:{' '}
+            <code className="text-orange-400">https://iarouter.softcomia.com/v1</code>{' '}
+            · Modelo: <code className="text-orange-400">claude-opus-4-6</code>
+            <br />
             Salvo no <span className="text-primary">localStorage</span> deste navegador
             apenas. Enviado via header <code className="text-orange-400">x-anthropic-key</code>{' '}
             só para <code className="text-orange-400">/api/atendimentos/gestor-prompt</code>.
-            O ideal é configurar <code className="text-orange-400">ANTHROPIC_API_KEY</code>{' '}
+            O ideal é configurar <code className="text-orange-400">IAROUTER_API_KEY</code>{' '}
             no servidor — esse campo é só fallback.
           </p>
         </div>

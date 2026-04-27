@@ -12,8 +12,13 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
-import { getAnthropicClient } from '@/lib/anthropic'
 import type { AtendimentoRecord } from '@/lib/types'
+
+// Endpoint do roteador de IA da Softcom (proxy compatível com Anthropic API).
+// Configurável via env, mas com default apontando pro iarouter de produção.
+const IAROUTER_BASE_URL =
+  process.env.IAROUTER_BASE_URL || 'https://iarouter.softcomia.com/v1'
+const IAROUTER_MODEL = process.env.IAROUTER_MODEL || 'claude-opus-4-6'
 
 export interface PromptSuggestion {
   id: string
@@ -122,9 +127,13 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'Nenhum atendimento encontrado' }, { status: 404 })
   }
 
-  // Chave do servidor tem precedência; cliente pode mandar via header como fallback
+  // Chave do servidor (IAROUTER_API_KEY ou ANTHROPIC_API_KEY) tem precedência;
+  // cliente pode mandar via header x-anthropic-key como fallback.
   const headerKey = request.headers.get('x-anthropic-key')?.trim() || null
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim() || headerKey
+  const apiKey =
+    process.env.IAROUTER_API_KEY?.trim() ||
+    process.env.ANTHROPIC_API_KEY?.trim() ||
+    headerKey
 
   if (!apiKey) {
     return Response.json(
@@ -149,13 +158,15 @@ ${summaries}
 Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL no formato JSON especificado.`
 
   try {
-    // Usa client do servidor quando a chave vem do env, senão instancia
-    // um novo com a chave do header (não mantém singleton com chave de cliente)
-    const client = process.env.ANTHROPIC_API_KEY
-      ? getAnthropicClient()
-      : new Anthropic({ apiKey })
+    // Sempre roteia pelo IAROUTER (proxy Anthropic-compatível da Softcom).
+    // Não reutilizamos o singleton de lib/anthropic pra não vazar a chave do
+    // cliente nem misturar baseURL com outros consumidores.
+    const client = new Anthropic({
+      apiKey,
+      baseURL: IAROUTER_BASE_URL,
+    })
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: IAROUTER_MODEL,
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],

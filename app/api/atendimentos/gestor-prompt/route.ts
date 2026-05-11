@@ -84,7 +84,7 @@ Devolva APENAS JSON válido no formato:
   ]
 }
 
-Limite-se a no máximo 5 sugestões, priorizando as de maior impacto. Se algum atendimento não trouxer aprendizado novo, ignore. Seja conciso — cada sugestão direto ao ponto.
+Limite-se a no máximo 3 sugestões, priorizando as de maior impacto. Seja MUITO conciso — insight em 1 frase, trecho_a_adicionar em até 3 frases curtas.
 
 IMPORTANTE — formato da resposta:
 - Responda EXCLUSIVAMENTE com o objeto JSON acima, começando em { e terminando em }
@@ -116,10 +116,11 @@ function buildAtendimentoSummary(a: AtendimentoRecord): string {
   }
   const transcript = a.transcricao_formatada || a.transcricao
   if (transcript) {
-    // 800 chars cabe ligações inteiras e os trechos mais relevantes de chats
-    // longos, sem estourar o tempo de processamento do modelo.
-    const truncated = String(transcript).slice(0, 800)
-    lines.push(`- Transcrição (truncada):\n${truncated}`)
+    // 400 chars: extrai só o "miolo" do atendimento. O modelo já tem
+    // problema_relatado, solucao_aplicada e a análise estruturada — a
+    // transcrição é só contexto auxiliar pra capturar tom/linguagem.
+    const truncated = String(transcript).slice(0, 400)
+    lines.push(`- Transcrição (trecho):\n${truncated}`)
   }
   return lines.join('\n')
 }
@@ -209,9 +210,17 @@ Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL
     // JSON depois que o stream termina.
     const anthropicStream = client.messages.stream({
       model,
-      max_tokens: 2048,
+      // 1024 tokens: 3 sugestões concisas cabem com folga. Geração ~3-5s
+      // mesmo no Opus, garantindo que cabe nos 60s do maxDuration mesmo
+      // se o iarouter estiver bufferizando o stream.
+      max_tokens: 1024,
       system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
+      messages: [
+        { role: 'user', content: userMessage },
+        // Prefill com '{' força o modelo a continuar com JSON puro sem
+        // explicação ou markdown wrapper, e acelera (menos tokens gerados).
+        { role: 'assistant', content: '{' },
+      ],
     })
 
     const encoder = new TextEncoder()
@@ -219,6 +228,9 @@ Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL
       async start(controller) {
         const startTime = Date.now()
         try {
+          // O prefill '{' foi enviado como assistant content e NÃO vem no
+          // stream da resposta — precisamos prepender pro cliente parsear.
+          controller.enqueue(encoder.encode('{'))
           for await (const event of anthropicStream) {
             if (
               event.type === 'content_block_delta' &&

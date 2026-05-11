@@ -54,6 +54,10 @@ export default function GestorPromptPage() {
   const [suggestions, setSuggestions] = useState<PromptSuggestion[]>([])
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set())
 
+  // Observações opcionais por atendimento: o que o usuário gostaria de
+  // mudar/melhorar a partir daquele caso específico.
+  const [notes, setNotes] = useState<Record<number, string>>({})
+
   const [updatedPrompt, setUpdatedPrompt] = useState('')
   const [copied, setCopied] = useState(false)
 
@@ -159,12 +163,20 @@ export default function GestorPromptPage() {
     setGenerating(true)
 
     try {
+      // Só envia notas dos atendimentos selecionados, e só as não-vazias
+      const notesPayload: Record<string, string> = {}
+      selectedIds.forEach((id) => {
+        const n = (notes[id] ?? '').trim()
+        if (n) notesPayload[String(id)] = n
+      })
+
       const res = await fetch('/api/atendimentos/gestor-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           currentPrompt,
           atendimentoIds: Array.from(selectedIds),
+          notes: notesPayload,
         }),
       })
 
@@ -369,35 +381,65 @@ export default function GestorPromptPage() {
             <ul className="divide-y divide-glass-border">
               {filteredRecords.map((r) => {
                 const checked = selectedIds.has(r.id)
+                const note = notes[r.id] ?? ''
                 return (
                   <li
                     key={r.id}
-                    onClick={() => toggleSelect(r.id)}
-                    className={`flex items-start gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                    className={`transition-colors ${
                       checked ? 'bg-orange-500/5' : 'hover:bg-white/[0.02]'
                     }`}
                   >
-                    <span
-                      className={`mt-0.5 ${checked ? 'text-orange-400' : 'text-muted'}`}
+                    {/* Linha principal — clica em qualquer lugar pra togglar */}
+                    <div
+                      onClick={() => toggleSelect(r.id)}
+                      className="flex items-start gap-3 px-4 py-2.5 cursor-pointer"
                     >
-                      {checked ? <CheckSquare size={16} /> : <Square size={16} />}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap text-sm">
-                        <span className="text-primary font-medium truncate max-w-[260px]">
-                          {r.nome_empresa || '—'}
-                        </span>
-                        <span className="text-[11px] uppercase tracking-wider text-muted">
-                          #{r.id} · {r.status ?? '—'}
-                          {r.destino ? ` · ${r.destino}` : ''}
-                        </span>
+                      <span
+                        className={`mt-0.5 ${checked ? 'text-orange-400' : 'text-muted'}`}
+                      >
+                        {checked ? <CheckSquare size={16} /> : <Square size={16} />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap text-sm">
+                          <span className="text-primary font-medium truncate max-w-[260px]">
+                            {r.nome_empresa || '—'}
+                          </span>
+                          <span className="text-[11px] uppercase tracking-wider text-muted">
+                            #{r.id} · {r.status ?? '—'}
+                            {r.destino ? ` · ${r.destino}` : ''}
+                          </span>
+                          {checked && note.trim() && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-300 uppercase tracking-wider">
+                              c/ observação
+                            </span>
+                          )}
+                        </div>
+                        {r.problema_relatado && (
+                          <p className="text-xs text-secondary truncate">
+                            {r.problema_relatado}
+                          </p>
+                        )}
                       </div>
-                      {r.problema_relatado && (
-                        <p className="text-xs text-secondary truncate">
-                          {r.problema_relatado}
-                        </p>
-                      )}
                     </div>
+
+                    {/* Textarea opcional — só aparece quando selecionado.
+                        stopPropagation pra interagir sem desmarcar. */}
+                    {checked && (
+                      <div
+                        className="px-4 pb-3 pl-11"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <textarea
+                          value={note}
+                          onChange={(e) =>
+                            setNotes((prev) => ({ ...prev, [r.id]: e.target.value }))
+                          }
+                          placeholder="O que você gostaria de melhorar a partir desse atendimento? (opcional)"
+                          rows={2}
+                          className="w-full bg-glass border border-glass-border rounded-lg px-3 py-2 text-xs text-primary outline-none focus:border-orange-500/40 placeholder:text-muted resize-y"
+                        />
+                      </div>
+                    )}
                   </li>
                 )
               })}

@@ -35,6 +35,9 @@ export interface PromptSuggestion {
 interface RequestBody {
   currentPrompt?: string
   atendimentoIds?: number[]
+  // Notas opcionais por atendimento: o usuário descreve o que gostaria
+  // de melhorar/mudar a partir daquele caso. Chave é o id em string.
+  notes?: Record<string, string>
 }
 
 const SYSTEM_PROMPT = `Você é um especialista em engenharia de prompts para agentes de IA conversacionais de atendimento ao cliente (PT-BR).
@@ -68,9 +71,11 @@ Devolva APENAS JSON válido no formato:
   ]
 }
 
-Limite-se a no máximo 8 sugestões, priorizando as de maior impacto. Se algum atendimento não trouxer aprendizado novo, ignore.`
+Limite-se a no máximo 8 sugestões, priorizando as de maior impacto. Se algum atendimento não trouxer aprendizado novo, ignore.
 
-function buildAtendimentoSummary(a: AtendimentoRecord): string {
+ATENÇÃO: alguns atendimentos podem ter um campo "OBSERVAÇÃO DO USUÁRIO". Esse campo expressa o que o operador humano quer especificamente ver mudado a partir daquele caso — você DEVE priorizar gerar sugestões que respondam diretamente a essas observações, mesmo que o conteúdo do atendimento em si pareça pouco relevante. Trate a observação como direcionamento explícito da intenção.`
+
+function buildAtendimentoSummary(a: AtendimentoRecord, userNote?: string): string {
   const lines: string[] = []
   lines.push(`### Atendimento #${a.id}${a.id_ligacao ? ` (${a.id_ligacao})` : ''}`)
   lines.push(`- Status: ${a.status ?? '—'}`)
@@ -89,6 +94,11 @@ function buildAtendimentoSummary(a: AtendimentoRecord): string {
     if (pe.problema.mensagem_erro) lines.push(`  Erro: ${pe.problema.mensagem_erro}`)
   } else if (pe?.motivo_descarte) {
     lines.push(`- Sem problema extraível (${pe.motivo_descarte})`)
+  }
+  // Observação do usuário sobre esse atendimento — direcionamento forte
+  // pra IA: o que ele quer ver melhorado especificamente a partir desse caso.
+  if (userNote && userNote.trim()) {
+    lines.push(`- OBSERVAÇÃO DO USUÁRIO (priorize ao gerar sugestões): ${userNote.trim()}`)
   }
   const transcript = a.transcricao_formatada || a.transcricao
   if (transcript) {
@@ -138,7 +148,10 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const summaries = (atendimentos as AtendimentoRecord[]).map(buildAtendimentoSummary).join('\n\n')
+  const userNotes = body.notes ?? {}
+  const summaries = (atendimentos as AtendimentoRecord[])
+    .map((a) => buildAtendimentoSummary(a, userNotes[String(a.id)]))
+    .join('\n\n')
 
   const userMessage = `# PROMPT_ATUAL
 

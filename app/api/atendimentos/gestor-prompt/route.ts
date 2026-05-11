@@ -215,12 +215,7 @@ Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL
       // se o iarouter estiver bufferizando o stream.
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
-      messages: [
-        { role: 'user', content: userMessage },
-        // Prefill com '{' força o modelo a continuar com JSON puro sem
-        // explicação ou markdown wrapper, e acelera (menos tokens gerados).
-        { role: 'assistant', content: '{' },
-      ],
+      messages: [{ role: 'user', content: userMessage }],
     })
 
     const encoder = new TextEncoder()
@@ -228,9 +223,6 @@ Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL
       async start(controller) {
         const startTime = Date.now()
         try {
-          // O prefill '{' foi enviado como assistant content e NÃO vem no
-          // stream da resposta — precisamos prepender pro cliente parsear.
-          controller.enqueue(encoder.encode('{'))
           for await (const event of anthropicStream) {
             if (
               event.type === 'content_block_delta' &&

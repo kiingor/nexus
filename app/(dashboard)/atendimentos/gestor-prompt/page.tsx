@@ -43,6 +43,84 @@ const CATEGORY_COLOR: Record<PromptSuggestion['categoria'], string> = {
 const LS_PROMPT_KEY = 'nexus:gestor-prompt:current'
 const LS_API_KEY = 'nexus:gestor-prompt:anthropic-key'
 
+// ── Configuração do iarouter (chamada direta do browser) ───────────────
+// Bypassa a Vercel Function pra evitar timeout de 60s. O navegador aguarda
+// o tempo que for necessário.
+const IAROUTER_BASE_URL = 'https://iarouter.softcomia.com/v1'
+const IAROUTER_DEFAULT_MODEL = 'cc/claude-opus-4-6'
+
+const SYSTEM_PROMPT = `Você é um especialista em engenharia de prompts para agentes de IA conversacionais de atendimento ao cliente (PT-BR).
+
+Você recebe:
+1. Um PROMPT_ATUAL usado por um agente de voz que atende clientes
+2. Um conjunto de ATENDIMENTOS reais (transcrições, problema, status, sentimento, custo, análise estruturada)
+
+Sua tarefa é analisar os atendimentos e propor MELHORIAS PONTUAIS e SEPARADAS para o prompt — cada sugestão deve ser independente e poder ser aplicada isoladamente.
+
+Cada sugestão deve:
+- Ser concreta e acionável (não genérica)
+- Ter um título curto descritivo
+- Justificar com base em algo observado nos atendimentos (insight)
+- Trazer o trecho exato em PT-BR que o usuário poderá colar/inserir no prompt
+- Indicar se vai no início, fim ou complementa uma seção existente
+- Identificar uma categoria entre: cobertura (cobrir cenário não tratado), tom (ajustar linguagem), roteiro (mudar fluxo de fala), erro_comum (evitar problema recorrente), extracao (melhorar coleta de dados), outro
+
+Devolva APENAS JSON válido no formato:
+{
+  "suggestions": [
+    {
+      "id": "s1",
+      "titulo": "...",
+      "categoria": "cobertura",
+      "insight": "...",
+      "trecho_a_adicionar": "...",
+      "exemplo_atendimento": "Atendimento #123 — empresa X",
+      "posicao_sugerida": "fim"
+    }
+  ]
+}
+
+Limite-se a no máximo 8 sugestões, priorizando as de maior impacto. Se algum atendimento não trouxer aprendizado novo, ignore.
+
+IMPORTANTE — formato da resposta:
+- Responda EXCLUSIVAMENTE com o objeto JSON acima, começando em { e terminando em }
+- Não escreva NADA antes ou depois do JSON
+- Não use blocos markdown (sem \`\`\`json)
+- Não inclua comentários, explicações, saudações ou conclusões`
+
+function buildAtendimentoSummary(a: AtendimentoRecord): string {
+  const lines: string[] = []
+  lines.push(`### Atendimento #${a.id}${a.id_ligacao ? ` (${a.id_ligacao})` : ''}`)
+  lines.push(`- Status: ${a.status ?? '—'}`)
+  if (a.destino) lines.push(`- Destino: ${a.destino}`)
+  if (a.nome_empresa) lines.push(`- Empresa: ${a.nome_empresa}`)
+  if (a.sentimento_cliente) lines.push(`- Sentimento: ${a.sentimento_cliente}`)
+  if (a.duracao_segundos != null)
+    lines.push(`- Duração: ${Math.round(a.duracao_segundos / 1000)}s`)
+  if (a.problema_relatado) lines.push(`- Problema relatado: ${a.problema_relatado}`)
+  if (a.solucao_aplicada) lines.push(`- Solução aplicada: ${a.solucao_aplicada}`)
+  const pe = a.problema_extraido
+  if (pe?.tem_problema_extraivel && pe.problema) {
+    lines.push(
+      `- Análise: categoria=${pe.problema.categoria ?? '?'}, módulo=${pe.problema.modulo_afetado ?? '?'}, frequência=${pe.problema.frequencia ?? '?'}`
+    )
+    if (pe.problema.mensagem_erro) lines.push(`  Erro: ${pe.problema.mensagem_erro}`)
+  } else if (pe?.motivo_descarte) {
+    lines.push(`- Sem problema extraível (${pe.motivo_descarte})`)
+  }
+  const transcript = a.transcricao_formatada || a.transcricao
+  if (transcript) {
+    const truncated = String(transcript).slice(0, 1500)
+    lines.push(`- Transcrição (truncada):\n${truncated}`)
+  }
+  return lines.join('\n')
+}
+
+function normalizeIarouterModel(raw: string): string {
+  const trimmed = raw.trim() || 'claude-opus-4-6'
+  return trimmed.includes('/') ? trimmed : `cc/${trimmed}`
+}
+
 export default function GestorPromptPage() {
   const [currentPrompt, setCurrentPrompt] = useState('')
   const [hydrated, setHydrated] = useState(false)
@@ -171,8 +249,8 @@ export default function GestorPromptPage() {
   }
 
   // ── Gerar sugestões ────────────────────────────────────────────────────
-  // Faz a request 1x; se voltar 429 com retryAfter, espera e tenta de novo
-  // automaticamente (até 3 tentativas total). Mantém o spinner girando.
+  // Chama o iarouter DIRETO do browser, bypassando a Vercel Function pra
+  // evitar o timeout de 60s. O navegador aguarda o tempo que for preciso.
   async function generate() {
     setError(null)
     setSuggestions([])
@@ -187,135 +265,119 @@ export default function GestorPromptPage() {
       setError('Selecione ao menos 1 atendimento.')
       return
     }
+    if (!apiKey.trim()) {
+      setNeedsApiKey(true)
+      setError(
+        'Cole sua chave do Softcom IA Router abaixo. Ela é enviada direto pro iarouter pelo navegador (não passa pelo nosso servidor).'
+      )
+      return
+    }
+
+    // Pega os atendimentos completos do estado (já carregados pela lista).
+    const selectedAtendimentos = records.filter((r) => selectedIds.has(r.id))
+    if (selectedAtendimentos.length === 0) {
+      setError('Atendimentos selecionados não foram encontrados na lista atual.')
+      return
+    }
 
     setGenerating(true)
 
-    const MAX_429_RETRIES = 2 // 1 chamada inicial + 2 retries automáticas
+    const MAX_429_RETRIES = 2
 
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (apiKey.trim()) headers['x-anthropic-key'] = apiKey.trim()
-      const bodyJson = JSON.stringify({
-        currentPrompt,
-        atendimentoIds: Array.from(selectedIds),
+      const summaries = selectedAtendimentos.map(buildAtendimentoSummary).join('\n\n')
+      const userMessage = `# PROMPT_ATUAL\n\n\`\`\`\n${currentPrompt}\n\`\`\`\n\n# ATENDIMENTOS SELECIONADOS\n\n${summaries}\n\n# TAREFA\nAnalise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL no formato JSON especificado.`
+
+      const requestBody = JSON.stringify({
+        model: normalizeIarouterModel(IAROUTER_DEFAULT_MODEL),
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMessage }],
       })
 
       let lastErrorMsg = 'Erro ao gerar sugestões'
 
       for (let attempt = 0; attempt <= MAX_429_RETRIES; attempt++) {
-        const res = await fetch('/api/atendimentos/gestor-prompt', {
+        // CHAMADA DIRETA AO IAROUTER (sem Vercel Function intermediária).
+        // Sem timeout do plano gratuito — o navegador espera o tempo necessário.
+        const res = await fetch(`${IAROUTER_BASE_URL}/messages`, {
           method: 'POST',
-          headers,
-          body: bodyJson,
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey.trim(),
+            'anthropic-version': '2023-06-01',
+          },
+          body: requestBody,
         })
 
-        // Erros de pré-processamento (400, 429, 500, 503) ainda vêm como JSON
-        // do servidor. Apenas o sucesso vem como text/plain (stream).
-        const contentType = res.headers.get('content-type') ?? ''
-        const isStreaming = contentType.startsWith('text/plain')
+        const raw = await res.text()
+        let data: {
+          content?: Array<{ type: string; text?: string }>
+          error?: { message?: string; type?: string }
+        } = {}
+        try {
+          data = raw ? JSON.parse(raw) : {}
+        } catch {
+          setError(
+            `Resposta inesperada do iarouter (status ${res.status}). Verifique sua chave ou conexão.`
+          )
+          return
+        }
 
-        // ─── Erros: lê como texto, tenta JSON ────────────────────────────
-        if (!isStreaming) {
-          const raw = await res.text()
-          let data: { error?: string; retryAfter?: number } = {}
-          try {
-            data = raw ? JSON.parse(raw) : {}
-          } catch {
-            if (res.status === 504 || /timeout/i.test(raw)) {
-              setError(
-                'A análise demorou demais e o servidor encerrou a request. Tente novamente com menos atendimentos ou aguarde alguns segundos.'
-              )
-            } else {
-              setError(
-                `Resposta inesperada do servidor (status ${res.status}). Tente novamente em alguns segundos.`
-              )
-            }
-            return
-          }
+        // 429 → aguarda "reset after Xs" e tenta de novo
+        if (res.status === 429 && attempt < MAX_429_RETRIES) {
+          const match = data.error?.message?.match(/reset after (\d+)s/i)
+          const waitSec = match ? parseInt(match[1], 10) + 1 : 6
+          setError(`Limite de cota atingido. Tentando novamente em ${waitSec}s... (${attempt + 1}/${MAX_429_RETRIES + 1})`)
+          await new Promise((r) => setTimeout(r, waitSec * 1000))
+          continue
+        }
 
-          if (res.status === 429 && attempt < MAX_429_RETRIES) {
-            const headerRetry = parseInt(res.headers.get('Retry-After') ?? '0', 10)
-            const waitSec = data.retryAfter ?? (headerRetry > 0 ? headerRetry : 6)
-            setError(`Limite de cota atingido. Tentando novamente em ${waitSec}s... (${attempt + 1}/${MAX_429_RETRIES + 1})`)
-            await new Promise((r) => setTimeout(r, waitSec * 1000))
-            continue
-          }
+        // 401/403 → chave inválida
+        if (res.status === 401 || res.status === 403) {
+          setNeedsApiKey(true)
+          setError('Chave do iarouter rejeitada (401/403). Verifique se está correta e ativa.')
+          return
+        }
 
-          if (res.status === 503) {
-            setNeedsApiKey(true)
-            setError(
-              apiKey.trim()
-                ? 'A chave salva foi rejeitada pelo servidor. Confira ou cole uma nova do iarouter.'
-                : 'O servidor não tem chave do Softcom IA Router configurada. Cole sua chave abaixo para usar pelo navegador.'
-            )
-            return
-          }
-
-          lastErrorMsg = data?.error || `Erro ${res.status} ao gerar sugestões`
+        if (!res.ok) {
+          lastErrorMsg = data.error?.message || `Erro ${res.status} do iarouter`
           setError(lastErrorMsg)
           return
         }
 
-        // ─── Sucesso: lê o stream ────────────────────────────────────────
-        if (!res.body) {
-          setError('Servidor não devolveu corpo de resposta.')
+        // Sucesso: extrai o texto da resposta do Claude
+        const text = (data.content ?? [])
+          .filter((b) => b.type === 'text' && b.text)
+          .map((b) => b.text as string)
+          .join('\n')
+
+        if (!text) {
+          setError('Resposta do iarouter sem conteúdo de texto.')
           return
         }
 
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let accumulated = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          accumulated += decoder.decode(value, { stream: true })
-        }
-
-        // Detecta marcador de erro injetado pelo stream do servidor
-        const errMatch = accumulated.match(/__STREAM_ERROR__(\{[\s\S]*?\})__END__/)
-        if (errMatch) {
-          try {
-            const errData = JSON.parse(errMatch[1]) as { status?: number; message?: string }
-            if (errData.status === 429 && attempt < MAX_429_RETRIES) {
-              const reset = errData.message?.match(/reset after (\d+)s/i)
-              const waitSec = reset ? parseInt(reset[1], 10) + 1 : 6
-              setError(`Limite de cota atingido. Tentando novamente em ${waitSec}s... (${attempt + 1}/${MAX_429_RETRIES + 1})`)
-              await new Promise((r) => setTimeout(r, waitSec * 1000))
-              continue
-            }
-            setError(errData.message || 'Erro durante a geração.')
-            return
-          } catch {
-            setError('Erro durante a geração da resposta.')
-            return
-          }
-        }
-
-        // Extrai JSON da resposta acumulada (tolerante a wrapping markdown).
-        // Estratégia: pega do primeiro { até o último } pra absorver
-        // explicação antes/depois e blocos markdown ```json.
-        const firstBrace = accumulated.indexOf('{')
-        const lastBrace = accumulated.lastIndexOf('}')
+        // Extrai JSON (tolerante a wrapping markdown)
+        const firstBrace = text.indexOf('{')
+        const lastBrace = text.lastIndexOf('}')
         if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-          console.warn('[gestor-prompt] resposta sem JSON:', accumulated)
+          console.warn('[gestor-prompt] resposta sem JSON:', text)
           setError(
-            `Resposta da IA sem JSON válido. Trecho recebido: "${accumulated.slice(0, 200)}${accumulated.length > 200 ? '...' : ''}". Tente novamente.`
+            `Resposta da IA sem JSON válido. Trecho recebido: "${text.slice(0, 200)}${text.length > 200 ? '...' : ''}". Tente novamente.`
           )
           return
         }
-        const jsonStr = accumulated.slice(firstBrace, lastBrace + 1)
+        const jsonStr = text.slice(firstBrace, lastBrace + 1)
         let parsed: { suggestions?: PromptSuggestion[] }
         try {
           parsed = JSON.parse(jsonStr)
         } catch (parseErr) {
           console.warn('[gestor-prompt] JSON inválido:', { jsonStr, parseErr })
-          // Tenta sanitizar quebras de linha não escapadas dentro de strings
-          // (problema comum quando o modelo gera texto multilinha em valores).
           try {
             parsed = JSON.parse(jsonStr.replace(/\n/g, '\\n').replace(/\r/g, ''))
           } catch {
             setError(
-              `JSON da IA inválido. Possível corte no meio da geração. Trecho final: "...${accumulated.slice(-200)}". Tente novamente.`
+              `JSON da IA inválido. Trecho final: "...${text.slice(-200)}". Tente novamente.`
             )
             return
           }
@@ -502,16 +564,14 @@ export default function GestorPromptPage() {
         </div>
         <p className="text-[11px] text-muted mt-2 leading-relaxed">
           Endpoint:{' '}
-          <code className="text-orange-400">https://iarouter.softcomia.com/v1</code>{' '}
+          <code className="text-orange-400">https://iarouter.softcomia.com/v1/messages</code>{' '}
           · Modelo: <code className="text-orange-400">cc/claude-opus-4-6</code>
           <br />
           Salvo no <span className="text-primary">localStorage</span> deste navegador
-          apenas. Enviado via header <code className="text-orange-400">x-anthropic-key</code>{' '}
-          só para <code className="text-orange-400">/api/atendimentos/gestor-prompt</code>.{' '}
-          <span className="text-yellow-400 font-medium">
-            O ideal é configurar <code className="text-yellow-300">IAROUTER_API_KEY</code> no
-            servidor — esse campo é só fallback para uso local.
-          </span>
+          apenas. A chave é enviada <span className="text-green-400 font-medium">direto pro iarouter</span>{' '}
+          (não passa pelo nosso servidor) via header{' '}
+          <code className="text-orange-400">x-api-key</code>. Isso elimina o timeout de 60s
+          da Vercel e permite que a análise demore o tempo que precisar.
         </p>
       </div>
 

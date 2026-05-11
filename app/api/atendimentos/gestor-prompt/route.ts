@@ -14,6 +14,11 @@ import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import type { AtendimentoRecord } from '@/lib/types'
 
+// Vercel: estende o timeout da Function pra acomodar retries em 429.
+// 60s é o teto do plano Pro. No Hobby (default 10s) o efeito é nulo, mas
+// também não atrapalha — o retry foi calibrado pra caber em 10s no pior caso.
+export const maxDuration = 60
+
 // O iarouter exige prefixo de provider (ex: cc/claude-opus-4-6).
 // Adiciona 'cc/' automaticamente quando o modelo vem sem prefixo.
 function resolveIarouterModel(): string {
@@ -22,14 +27,16 @@ function resolveIarouterModel(): string {
 }
 
 // Tenta extrair "reset after Xs" da mensagem do iarouter pra obedecer
-// o tempo exato pedido pelo provider. Default 6s se não conseguir parsear.
+// o tempo exato pedido pelo provider. Default 5s se não conseguir parsear.
 function parseResetSeconds(message: string): number {
   const match = message.match(/reset after (\d+)s/i)
-  if (match) return Math.min(parseInt(match[1], 10), 30)
-  return 6
+  if (match) return Math.min(parseInt(match[1], 10), 15)
+  return 5
 }
 
-const RATE_LIMIT_MAX_RETRIES = 3
+// Calibrado pra caber em ~25s no pior caso (2 retries × ~12s + chamada).
+// No Hobby (10s) a primeira retry ainda pode caber se reset for curto.
+const RATE_LIMIT_MAX_RETRIES = 2
 
 async function callWithRetry(
   client: Anthropic,

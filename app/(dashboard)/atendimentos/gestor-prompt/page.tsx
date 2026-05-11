@@ -199,7 +199,26 @@ export default function GestorPromptPage() {
           atendimentoIds: Array.from(selectedIds),
         }),
       })
-      const data = await res.json()
+
+      // Vercel pode devolver HTML em caso de timeout/erro de runtime — não
+      // tenta parsear como JSON cego, lê como texto e tenta JSON depois.
+      const raw = await res.text()
+      let data: { error?: string; suggestions?: PromptSuggestion[] } = {}
+      try {
+        data = raw ? JSON.parse(raw) : {}
+      } catch {
+        // Resposta não-JSON (HTML de erro, timeout da Function, etc).
+        if (res.status === 504 || /timeout/i.test(raw)) {
+          setError(
+            'A análise demorou demais e o servidor encerrou a request. Tente novamente com menos atendimentos ou aguarde alguns segundos.'
+          )
+        } else {
+          setError(
+            `Resposta inesperada do servidor (status ${res.status}). Tente novamente em alguns segundos.`
+          )
+        }
+        return
+      }
 
       // Servidor sem chave configurada → pede ao usuário
       if (res.status === 503) {

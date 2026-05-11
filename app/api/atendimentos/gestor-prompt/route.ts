@@ -84,7 +84,14 @@ Devolva APENAS JSON válido no formato:
   ]
 }
 
-Limite-se a no máximo 5 sugestões, priorizando as de maior impacto. Se algum atendimento não trouxer aprendizado novo, ignore. Seja conciso — cada sugestão direto ao ponto.`
+Limite-se a no máximo 5 sugestões, priorizando as de maior impacto. Se algum atendimento não trouxer aprendizado novo, ignore. Seja conciso — cada sugestão direto ao ponto.
+
+IMPORTANTE — formato da resposta:
+- Responda EXCLUSIVAMENTE com o objeto JSON acima, começando em { e terminando em }
+- Não escreva NADA antes ou depois do JSON
+- Não use blocos markdown (sem \`\`\`json)
+- Não inclua comentários, explicações, saudações ou conclusões
+- Dentro de strings, escape aspas duplas com \\" e quebras de linha com \\n`
 
 function buildAtendimentoSummary(a: AtendimentoRecord): string {
   const lines: string[] = []

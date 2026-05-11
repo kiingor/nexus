@@ -291,18 +291,34 @@ export default function GestorPromptPage() {
           }
         }
 
-        // Extrai JSON da resposta acumulada (tolerante a wrapping markdown)
-        const jsonMatch = accumulated.match(/\{[\s\S]*\}/)
-        if (!jsonMatch) {
-          setError('Resposta da IA sem JSON válido. Tente novamente.')
+        // Extrai JSON da resposta acumulada (tolerante a wrapping markdown).
+        // Estratégia: pega do primeiro { até o último } pra absorver
+        // explicação antes/depois e blocos markdown ```json.
+        const firstBrace = accumulated.indexOf('{')
+        const lastBrace = accumulated.lastIndexOf('}')
+        if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+          console.warn('[gestor-prompt] resposta sem JSON:', accumulated)
+          setError(
+            `Resposta da IA sem JSON válido. Trecho recebido: "${accumulated.slice(0, 200)}${accumulated.length > 200 ? '...' : ''}". Tente novamente.`
+          )
           return
         }
+        const jsonStr = accumulated.slice(firstBrace, lastBrace + 1)
         let parsed: { suggestions?: PromptSuggestion[] }
         try {
-          parsed = JSON.parse(jsonMatch[0])
-        } catch {
-          setError('JSON da IA inválido. Tente novamente.')
-          return
+          parsed = JSON.parse(jsonStr)
+        } catch (parseErr) {
+          console.warn('[gestor-prompt] JSON inválido:', { jsonStr, parseErr })
+          // Tenta sanitizar quebras de linha não escapadas dentro de strings
+          // (problema comum quando o modelo gera texto multilinha em valores).
+          try {
+            parsed = JSON.parse(jsonStr.replace(/\n/g, '\\n').replace(/\r/g, ''))
+          } catch {
+            setError(
+              `JSON da IA inválido. Possível corte no meio da geração. Trecho final: "...${accumulated.slice(-200)}". Tente novamente.`
+            )
+            return
+          }
         }
 
         const list: PromptSuggestion[] = Array.isArray(parsed.suggestions) ? parsed.suggestions : []

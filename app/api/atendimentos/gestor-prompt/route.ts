@@ -14,11 +14,16 @@ import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import type { AtendimentoRecord } from '@/lib/types'
 
-// Endpoint do roteador de IA da Softcom (proxy compatível com Anthropic API).
-// Configurável via env, mas com default apontando pro iarouter de produção.
-const IAROUTER_BASE_URL =
-  process.env.IAROUTER_BASE_URL || 'https://iarouter.softcomia.com/v1'
-const IAROUTER_MODEL = process.env.IAROUTER_MODEL || 'claude-opus-4-6'
+// O iarouter exige prefixo de provider (ex: cc/claude-opus-4-6).
+// Adiciona 'cc/' automaticamente quando o modelo vem sem prefixo.
+function resolveIarouterModel(): string {
+  const raw = process.env.IAROUTER_MODEL?.trim() || 'claude-opus-4-6'
+  return raw.includes('/') ? raw : `cc/${raw}`
+}
+
+function resolveIarouterBaseUrl(): string {
+  return process.env.IAROUTER_BASE_URL?.trim() || 'https://iarouter.softcomia.com/v1'
+}
 
 export interface PromptSuggestion {
   id: string
@@ -165,10 +170,12 @@ Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL
     // cliente nem misturar baseURL com outros consumidores.
     const client = new Anthropic({
       apiKey,
-      baseURL: IAROUTER_BASE_URL,
+      baseURL: resolveIarouterBaseUrl(),
     })
+    const model = resolveIarouterModel()
+    console.log('[gestor-prompt] enviando para iarouter:', { baseUrl: resolveIarouterBaseUrl(), model })
     const response = await client.messages.create({
-      model: IAROUTER_MODEL,
+      model,
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],

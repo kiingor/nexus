@@ -347,61 +347,61 @@ export default function GestorPromptPage() {
       </div>
 
       {/* API Key do Softcom IA Router (fallback) */}
-      {(needsApiKey || apiKey) && (
-        <div
-          className={`glass p-5 mb-5 ${
-            needsApiKey ? 'border-l-2 border-yellow-500/40' : ''
-          }`}
-        >
-          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <h2 className="text-xs uppercase tracking-wider text-muted flex items-center gap-1.5">
-              <Key size={12} />
-              Chave do Softcom IA Router · Opus 4.6
-            </h2>
-            {apiKey && (
-              <button
-                type="button"
-                onClick={clearApiKey}
-                className="inline-flex items-center gap-1.5 text-[11px] text-muted hover:text-red-400 transition-colors"
-                title="Apagar chave salva"
-              >
-                <Trash2 size={11} />
-                Apagar chave
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type={showApiKey ? 'text' : 'password'}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Cole sua chave do iarouter.softcomia.com..."
-              className="flex-1 bg-glass border border-glass-border rounded-xl px-3 py-2 text-sm text-primary outline-none focus:border-orange-500/40 placeholder:text-muted font-mono"
-              autoComplete="off"
-              spellCheck={false}
-            />
+      <div
+        className={`glass p-5 mb-5 ${
+          needsApiKey ? 'border-l-2 border-yellow-500/40' : ''
+        }`}
+      >
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <h2 className="text-xs uppercase tracking-wider text-muted flex items-center gap-1.5">
+            <Key size={12} />
+            Chave do Softcom IA Router · Opus 4.6
+          </h2>
+          {apiKey && (
             <button
               type="button"
-              onClick={() => setShowApiKey((v) => !v)}
-              className="p-2 rounded-xl border border-glass-border bg-glass text-muted hover:text-primary"
-              title={showApiKey ? 'Ocultar' : 'Mostrar'}
+              onClick={clearApiKey}
+              className="inline-flex items-center gap-1.5 text-[11px] text-muted hover:text-red-400 transition-colors"
+              title="Apagar chave salva"
             >
-              {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+              <Trash2 size={11} />
+              Apagar chave
             </button>
-          </div>
-          <p className="text-[11px] text-muted mt-2 leading-relaxed">
-            Endpoint:{' '}
-            <code className="text-orange-400">https://iarouter.softcomia.com/v1</code>{' '}
-            · Modelo: <code className="text-orange-400">claude-opus-4-6</code>
-            <br />
-            Salvo no <span className="text-primary">localStorage</span> deste navegador
-            apenas. Enviado via header <code className="text-orange-400">x-anthropic-key</code>{' '}
-            só para <code className="text-orange-400">/api/atendimentos/gestor-prompt</code>.
-            O ideal é configurar <code className="text-orange-400">IAROUTER_API_KEY</code>{' '}
-            no servidor — esse campo é só fallback.
-          </p>
+          )}
         </div>
-      )}
+        <div className="flex items-center gap-2">
+          <input
+            type={showApiKey ? 'text' : 'password'}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="Cole sua chave do iarouter.softcomia.com..."
+            className="flex-1 bg-glass border border-glass-border rounded-xl px-3 py-2 text-sm text-primary outline-none focus:border-orange-500/40 placeholder:text-muted font-mono"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button
+            type="button"
+            onClick={() => setShowApiKey((v) => !v)}
+            className="p-2 rounded-xl border border-glass-border bg-glass text-muted hover:text-primary"
+            title={showApiKey ? 'Ocultar' : 'Mostrar'}
+          >
+            {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </div>
+        <p className="text-[11px] text-muted mt-2 leading-relaxed">
+          Endpoint:{' '}
+          <code className="text-orange-400">https://iarouter.softcomia.com/v1</code>{' '}
+          · Modelo: <code className="text-orange-400">cc/claude-opus-4-6</code>
+          <br />
+          Salvo no <span className="text-primary">localStorage</span> deste navegador
+          apenas. Enviado via header <code className="text-orange-400">x-anthropic-key</code>{' '}
+          só para <code className="text-orange-400">/api/atendimentos/gestor-prompt</code>.{' '}
+          <span className="text-yellow-400 font-medium">
+            O ideal é configurar <code className="text-yellow-300">IAROUTER_API_KEY</code> no
+            servidor — esse campo é só fallback para uso local.
+          </span>
+        </p>
+      </div>
 
       {/* Step 2 — Atendimentos */}
       <div className="glass p-5 mb-5">

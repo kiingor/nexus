@@ -38,6 +38,9 @@ interface RequestBody {
   // Notas opcionais por atendimento: o usuário descreve o que gostaria
   // de melhorar/mudar a partir daquele caso. Chave é o id em string.
   notes?: Record<string, string>
+  // Direcionamento global opcional: descreve a intenção geral das
+  // melhorias, aplicada a todas as sugestões.
+  globalIntent?: string
 }
 
 const SYSTEM_PROMPT = `Você é um especialista em engenharia de prompts para agentes de IA conversacionais de atendimento ao cliente (PT-BR).
@@ -149,11 +152,21 @@ export async function POST(request: NextRequest) {
   }
 
   const userNotes = body.notes ?? {}
+  const globalIntent = (body.globalIntent ?? '').trim()
   const summaries = (atendimentos as AtendimentoRecord[])
     .map((a) => buildAtendimentoSummary(a, userNotes[String(a.id)]))
     .join('\n\n')
 
-  const userMessage = `# PROMPT_ATUAL
+  // Direcionamento global aparece como bloco proeminente no topo do
+  // userMessage pra o modelo enxergar como instrução prioritária.
+  const intentBlock = globalIntent
+    ? `# DIRECIONAMENTO GERAL DO USUÁRIO (prioridade máxima)
+${globalIntent}
+
+`
+    : ''
+
+  const userMessage = `${intentBlock}# PROMPT_ATUAL
 
 \`\`\`
 ${currentPrompt}
@@ -164,7 +177,7 @@ ${currentPrompt}
 ${summaries}
 
 # TAREFA
-Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL no formato JSON especificado.`
+Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL no formato JSON especificado.${globalIntent ? ' Priorize sugestões alinhadas ao DIRECIONAMENTO GERAL DO USUÁRIO no topo.' : ''}`
 
   try {
     const client = new OpenAI({ apiKey })

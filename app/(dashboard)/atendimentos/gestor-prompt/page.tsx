@@ -38,9 +38,13 @@ const CATEGORY_COLOR: Record<PromptSuggestion['categoria'], string> = {
 }
 
 const LS_PROMPT_KEY = 'nexus:gestor-prompt:current'
+const LS_INTENT_KEY = 'nexus:gestor-prompt:intent'
 
 export default function GestorPromptPage() {
   const [currentPrompt, setCurrentPrompt] = useState('')
+  // Direcionamento global opcional: o usuário descreve a intenção geral
+  // das melhorias (ex: "Quero tornar o atendimento mais empático").
+  const [globalIntent, setGlobalIntent] = useState('')
   const [hydrated, setHydrated] = useState(false)
 
   const [records, setRecords] = useState<AtendimentoRecord[]>([])
@@ -61,18 +65,20 @@ export default function GestorPromptPage() {
   const [updatedPrompt, setUpdatedPrompt] = useState('')
   const [copied, setCopied] = useState(false)
 
-  // Hidratação do localStorage (prompt)
+  // Hidratação do localStorage (prompt + intenção global)
   useEffect(() => {
     try {
       const savedPrompt = localStorage.getItem(LS_PROMPT_KEY) ?? ''
+      const savedIntent = localStorage.getItem(LS_INTENT_KEY) ?? ''
       if (savedPrompt) setCurrentPrompt(savedPrompt)
+      if (savedIntent) setGlobalIntent(savedIntent)
     } catch {
       // localStorage indisponível (SSR / privacy mode)
     }
     setHydrated(true)
   }, [])
 
-  // Persiste prompt no localStorage
+  // Persiste prompt + intenção global no localStorage
   useEffect(() => {
     if (!hydrated) return
     try {
@@ -82,6 +88,16 @@ export default function GestorPromptPage() {
       // ignore
     }
   }, [currentPrompt, hydrated])
+
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      if (globalIntent) localStorage.setItem(LS_INTENT_KEY, globalIntent)
+      else localStorage.removeItem(LS_INTENT_KEY)
+    } catch {
+      // ignore
+    }
+  }, [globalIntent, hydrated])
 
   function clearSavedPrompt() {
     setCurrentPrompt('')
@@ -177,6 +193,7 @@ export default function GestorPromptPage() {
           currentPrompt,
           atendimentoIds: Array.from(selectedIds),
           notes: notesPayload,
+          globalIntent: globalIntent.trim() || undefined,
         }),
       })
 
@@ -313,6 +330,38 @@ export default function GestorPromptPage() {
           {hydrated && currentPrompt && (
             <span className="text-green-400">· salvo localmente</span>
           )}
+        </p>
+      </div>
+
+      {/* Step 1.5 — Direcionamento global (opcional) */}
+      <div className="glass p-5 mb-5">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <h2 className="text-xs uppercase tracking-wider text-muted">
+            Direcionamento das melhorias <span className="text-[10px] normal-case tracking-normal text-muted/70">(opcional)</span>
+          </h2>
+          {globalIntent && (
+            <button
+              type="button"
+              onClick={() => setGlobalIntent('')}
+              className="inline-flex items-center gap-1.5 text-[11px] text-muted hover:text-red-400 transition-colors"
+              title="Limpar direcionamento"
+            >
+              <Trash2 size={11} />
+              Limpar
+            </button>
+          )}
+        </div>
+        <textarea
+          value={globalIntent}
+          onChange={(e) => setGlobalIntent(e.target.value)}
+          placeholder="Descreva o foco geral das sugestões. Ex: 'Quero tornar o atendimento mais empático e reduzir transferências desnecessárias.' (opcional)"
+          rows={3}
+          className="w-full bg-glass border border-glass-border rounded-xl px-3 py-2 text-sm text-primary outline-none focus:border-orange-500/40 placeholder:text-muted"
+        />
+        <p className="text-[11px] text-muted mt-2">
+          Este texto será enviado junto com os atendimentos como
+          direcionamento geral. As observações por atendimento (que aparecem
+          ao marcá-los abaixo) continuam funcionando em paralelo.
         </p>
       </div>
 

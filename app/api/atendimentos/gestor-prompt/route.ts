@@ -14,12 +14,45 @@ import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import type { AtendimentoRecord } from '@/lib/types'
 
-// O iarouter exige prefixo de provider (ex: cc/claude-sonnet-4-5).
-// Default usa Sonnet (cota mais alta que Opus, mesmo nível de qualidade pra análise).
+// O iarouter exige prefixo de provider (ex: cc/claude-opus-4-6).
 // Adiciona 'cc/' automaticamente quando o modelo vem sem prefixo.
 function resolveIarouterModel(): string {
-  const raw = process.env.IAROUTER_MODEL?.trim() || 'claude-sonnet-4-5'
+  const raw = process.env.IAROUTER_MODEL?.trim() || 'claude-opus-4-6'
   return raw.includes('/') ? raw : `cc/${raw}`
+}
+
+// Tenta extrair "reset after Xs" da mensagem do iarouter pra obedecer
+// o tempo exato pedido pelo provider. Default 6s se não conseguir parsear.
+function parseResetSeconds(message: string): number {
+  const match = message.match(/reset after (\d+)s/i)
+  if (match) return Math.min(parseInt(match[1], 10), 30)
+  return 6
+}
+
+const RATE_LIMIT_MAX_RETRIES = 3
+
+async function callWithRetry(
+  client: Anthropic,
+  params: Anthropic.Messages.MessageCreateParamsNonStreaming
+): Promise<Anthropic.Messages.Message> {
+  let lastErr: unknown = null
+  for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
+    try {
+      return await client.messages.create(params)
+    } catch (err) {
+      lastErr = err
+      const msg = err instanceof Error ? err.message : String(err)
+      const is429 =
+        (err as { status?: number })?.status === 429 || /429|rate.?limit/i.test(msg)
+      if (!is429 || attempt === RATE_LIMIT_MAX_RETRIES) throw err
+      const waitSec = parseResetSeconds(msg) + 1
+      console.warn(
+        `[gestor-prompt] 429 — tentativa ${attempt + 1}/${RATE_LIMIT_MAX_RETRIES + 1}, aguardando ${waitSec}s`
+      )
+      await new Promise((r) => setTimeout(r, waitSec * 1000))
+    }
+  }
+  throw lastErr
 }
 
 function resolveIarouterBaseUrl(): string {
@@ -175,7 +208,7 @@ Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL
     })
     const model = resolveIarouterModel()
     console.log('[gestor-prompt] enviando para iarouter:', { baseUrl: resolveIarouterBaseUrl(), model })
-    const response = await client.messages.create({
+    const response = await callWithRetry(client, {
       model,
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
@@ -210,6 +243,16 @@ Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL
     return Response.json({ suggestions })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro ao chamar Claude'
+    const status = (err as { status?: number })?.status
+    if (status === 429 || /429|rate.?limit/i.test(msg)) {
+      return Response.json(
+        {
+          error:
+            'O modelo Opus está com limite de requisições atingido no momento. Aguarde alguns segundos e tente novamente.',
+        },
+        { status: 429 }
+      )
+    }
     return Response.json({ error: msg }, { status: 500 })
   }
 }

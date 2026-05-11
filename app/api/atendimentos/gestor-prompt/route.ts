@@ -3,48 +3,32 @@
  *
  * Body: { currentPrompt: string, atendimentoIds: number[] }
  *
- * Lê os atendimentos do Supabase, manda pro Claude e devolve
+ * Lê os atendimentos do Supabase, manda pro GPT (OpenAI) e devolve
  * uma lista de sugestões separadas para serem aplicadas ao prompt.
  *
  * Resposta: { suggestions: Suggestion[] }
  */
 
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import type { AtendimentoRecord } from '@/lib/types'
 
-// Vercel: estende o timeout da Function pra acomodar retries em 429.
-// 60s é o teto do plano Pro. No Hobby (default 10s) o efeito é nulo, mas
-// também não atrapalha — o retry foi calibrado pra caber em 10s no pior caso.
+// Vercel: 60s é o teto do plano Hobby. GPT-4.1 responde tipicamente em
+// 5-15s mesmo com inputs grandes, então sobra folga.
 export const maxDuration = 60
 
-// O iarouter exige prefixo de provider (ex: cc/claude-opus-4-6).
-// Adiciona 'cc/' automaticamente quando o modelo vem sem prefixo.
-function resolveIarouterModel(): string {
-  const raw = process.env.IAROUTER_MODEL?.trim() || 'claude-opus-4-6'
-  return raw.includes('/') ? raw : `cc/${raw}`
-}
-
-// Extrai "reset after Xs" da mensagem do iarouter pra devolver ao cliente
-// quanto tempo aguardar antes de tentar de novo.
-function parseResetSeconds(message: string): number {
-  const match = message.match(/reset after (\d+)s/i)
-  if (match) return Math.min(parseInt(match[1], 10), 30)
-  return 5
-}
-
-function resolveIarouterBaseUrl(): string {
-  return process.env.IAROUTER_BASE_URL?.trim() || 'https://iarouter.softcomia.com/v1'
-}
+// Modelo padrão. Configurável via env (GESTOR_PROMPT_MODEL) caso queira
+// trocar pra gpt-4o, gpt-4.1-mini etc sem rebuild.
+const DEFAULT_MODEL = 'gpt-4.1'
 
 export interface PromptSuggestion {
   id: string
   titulo: string
   categoria: 'cobertura' | 'tom' | 'roteiro' | 'erro_comum' | 'extracao' | 'outro'
-  insight: string // por que (com base nos atendimentos)
-  trecho_a_adicionar: string // texto sugerido para inserir/adicionar
-  exemplo_atendimento: string | null // resumo do atendimento que motivou
+  insight: string
+  trecho_a_adicionar: string
+  exemplo_atendimento: string | null
   posicao_sugerida: 'inicio' | 'fim' | 'secao_existente'
 }
 
@@ -84,14 +68,7 @@ Devolva APENAS JSON válido no formato:
   ]
 }
 
-Limite-se a no máximo 3 sugestões, priorizando as de maior impacto. Seja MUITO conciso — insight em 1 frase, trecho_a_adicionar em até 3 frases curtas.
-
-IMPORTANTE — formato da resposta:
-- Responda EXCLUSIVAMENTE com o objeto JSON acima, começando em { e terminando em }
-- Não escreva NADA antes ou depois do JSON
-- Não use blocos markdown (sem \`\`\`json)
-- Não inclua comentários, explicações, saudações ou conclusões
-- Dentro de strings, escape aspas duplas com \\" e quebras de linha com \\n`
+Limite-se a no máximo 8 sugestões, priorizando as de maior impacto. Se algum atendimento não trouxer aprendizado novo, ignore.`
 
 function buildAtendimentoSummary(a: AtendimentoRecord): string {
   const lines: string[] = []
@@ -100,7 +77,6 @@ function buildAtendimentoSummary(a: AtendimentoRecord): string {
   if (a.destino) lines.push(`- Destino: ${a.destino}`)
   if (a.nome_empresa) lines.push(`- Empresa: ${a.nome_empresa}`)
   if (a.sentimento_cliente) lines.push(`- Sentimento: ${a.sentimento_cliente}`)
-  // duracao_segundos vem do banco em ms; converte pra segundos no resumo da IA
   if (a.duracao_segundos != null)
     lines.push(`- Duração: ${Math.round(a.duracao_segundos / 1000)}s`)
   if (a.problema_relatado) lines.push(`- Problema relatado: ${a.problema_relatado}`)
@@ -116,11 +92,8 @@ function buildAtendimentoSummary(a: AtendimentoRecord): string {
   }
   const transcript = a.transcricao_formatada || a.transcricao
   if (transcript) {
-    // 400 chars: extrai só o "miolo" do atendimento. O modelo já tem
-    // problema_relatado, solucao_aplicada e a análise estruturada — a
-    // transcrição é só contexto auxiliar pra capturar tom/linguagem.
-    const truncated = String(transcript).slice(0, 400)
-    lines.push(`- Transcrição (trecho):\n${truncated}`)
+    const truncated = String(transcript).slice(0, 1500)
+    lines.push(`- Transcrição (truncada):\n${truncated}`)
   }
   return lines.join('\n')
 }
@@ -157,17 +130,10 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'Nenhum atendimento encontrado' }, { status: 404 })
   }
 
-  // Chave do servidor (IAROUTER_API_KEY ou ANTHROPIC_API_KEY) tem precedência;
-  // cliente pode mandar via header x-anthropic-key como fallback.
-  const headerKey = request.headers.get('x-anthropic-key')?.trim() || null
-  const apiKey =
-    process.env.IAROUTER_API_KEY?.trim() ||
-    process.env.ANTHROPIC_API_KEY?.trim() ||
-    headerKey
-
+  const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) {
     return Response.json(
-      { error: 'ANTHROPIC_API_KEY não configurada no servidor' },
+      { error: 'OPENAI_API_KEY não configurada no servidor' },
       { status: 503 }
     )
   }
@@ -188,88 +154,63 @@ ${summaries}
 Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL no formato JSON especificado.`
 
   try {
-    // Sempre roteia pelo IAROUTER (proxy Anthropic-compatível da Softcom).
-    // Não reutilizamos o singleton de lib/anthropic pra não vazar a chave do
-    // cliente nem misturar baseURL com outros consumidores.
-    const client = new Anthropic({
-      apiKey,
-      baseURL: resolveIarouterBaseUrl(),
-    })
-    const model = resolveIarouterModel()
-    console.log('[gestor-prompt] enviando para iarouter (stream):', {
-      baseUrl: resolveIarouterBaseUrl(),
+    const client = new OpenAI({ apiKey })
+    const model = process.env.GESTOR_PROMPT_MODEL?.trim() || DEFAULT_MODEL
+    const startTime = Date.now()
+    console.log('[gestor-prompt] enviando para OpenAI:', {
       model,
       inputChars: userMessage.length,
     })
 
-    // Streaming: a Function retorna o ReadableStream imediatamente. O tempo
-    // gasto enquanto o conteúdo flui NÃO conta pro timeout da Vercel, então
-    // podemos esperar respostas longas do Opus sem estourar 10s.
-    //
-    // Enviamos só o texto bruto acumulado da resposta. O cliente parseia o
-    // JSON depois que o stream termina.
-    const anthropicStream = client.messages.stream({
+    // response_format json_object garante que a resposta é JSON válido —
+    // a OpenAI bloqueia o output até que esteja parseável. Elimina toda
+    // a complexidade de parser tolerante que tínhamos com Claude.
+    const response = await client.chat.completions.create({
       model,
-      // 1024 tokens: 3 sugestões concisas cabem com folga. Geração ~3-5s
-      // mesmo no Opus, garantindo que cabe nos 60s do maxDuration mesmo
-      // se o iarouter estiver bufferizando o stream.
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
+      temperature: 0.4,
+      max_tokens: 4096,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userMessage },
+      ],
     })
 
-    const encoder = new TextEncoder()
-    const readable = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        const startTime = Date.now()
-        try {
-          for await (const event of anthropicStream) {
-            if (
-              event.type === 'content_block_delta' &&
-              event.delta.type === 'text_delta' &&
-              event.delta.text
-            ) {
-              controller.enqueue(encoder.encode(event.delta.text))
-            }
-          }
-          console.log('[gestor-prompt] stream completo em', Date.now() - startTime, 'ms')
-          controller.close()
-        } catch (err) {
-          console.error('[gestor-prompt] erro no stream:', err)
-          // Em vez de quebrar, anexa um marcador no stream pra o cliente
-          // detectar que houve erro depois.
-          const msg = err instanceof Error ? err.message : String(err)
-          const errPayload = `\n\n__STREAM_ERROR__${JSON.stringify({
-            status: (err as { status?: number })?.status,
-            message: msg,
-          })}__END__`
-          controller.enqueue(encoder.encode(errPayload))
-          controller.close()
-        }
-      },
-    })
+    const elapsed = Date.now() - startTime
+    console.log('[gestor-prompt] resposta em', elapsed, 'ms')
 
-    return new Response(readable, {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-store',
-        'X-Content-Type-Options': 'nosniff',
-      },
-    })
+    const text = response.choices[0]?.message?.content
+    if (!text) {
+      return Response.json({ error: 'OpenAI não devolveu conteúdo' }, { status: 502 })
+    }
+
+    let parsed: { suggestions?: PromptSuggestion[] }
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      console.error('[gestor-prompt] JSON inválido (improvável com json_object):', text)
+      return Response.json({ error: 'JSON da IA inválido', raw: text }, { status: 502 })
+    }
+
+    const suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : []
+    return Response.json({ suggestions })
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Erro ao chamar Claude'
+    const msg = err instanceof Error ? err.message : 'Erro ao chamar OpenAI'
     const status = (err as { status?: number })?.status
-    if (status === 429 || /429|rate.?limit/i.test(msg)) {
-      const retryAfter = parseResetSeconds(msg) + 1
+    console.error('[gestor-prompt] erro:', { status, msg })
+
+    if (status === 429 || /rate.?limit/i.test(msg)) {
       return Response.json(
-        {
-          error: `Limite de requisições atingido. Tentando novamente em ${retryAfter}s...`,
-          retryAfter,
-        },
-        { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+        { error: 'Limite de requisições da OpenAI atingido. Tente novamente em alguns segundos.' },
+        { status: 429 }
+      )
+    }
+    if (status === 401 || status === 403) {
+      return Response.json(
+        { error: 'Chave da OpenAI inválida ou sem permissão. Verifique OPENAI_API_KEY no servidor.' },
+        { status: status }
       )
     }
     return Response.json({ error: msg }, { status: 500 })
   }
 }
-

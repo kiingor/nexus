@@ -26,40 +26,12 @@ function resolveIarouterModel(): string {
   return raw.includes('/') ? raw : `cc/${raw}`
 }
 
-// Tenta extrair "reset after Xs" da mensagem do iarouter pra obedecer
-// o tempo exato pedido pelo provider. Default 5s se não conseguir parsear.
+// Extrai "reset after Xs" da mensagem do iarouter pra devolver ao cliente
+// quanto tempo aguardar antes de tentar de novo.
 function parseResetSeconds(message: string): number {
   const match = message.match(/reset after (\d+)s/i)
-  if (match) return Math.min(parseInt(match[1], 10), 15)
+  if (match) return Math.min(parseInt(match[1], 10), 30)
   return 5
-}
-
-// Calibrado pra caber em ~25s no pior caso (2 retries × ~12s + chamada).
-// No Hobby (10s) a primeira retry ainda pode caber se reset for curto.
-const RATE_LIMIT_MAX_RETRIES = 2
-
-async function callWithRetry(
-  client: Anthropic,
-  params: Anthropic.Messages.MessageCreateParamsNonStreaming
-): Promise<Anthropic.Messages.Message> {
-  let lastErr: unknown = null
-  for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
-    try {
-      return await client.messages.create(params)
-    } catch (err) {
-      lastErr = err
-      const msg = err instanceof Error ? err.message : String(err)
-      const is429 =
-        (err as { status?: number })?.status === 429 || /429|rate.?limit/i.test(msg)
-      if (!is429 || attempt === RATE_LIMIT_MAX_RETRIES) throw err
-      const waitSec = parseResetSeconds(msg) + 1
-      console.warn(
-        `[gestor-prompt] 429 — tentativa ${attempt + 1}/${RATE_LIMIT_MAX_RETRIES + 1}, aguardando ${waitSec}s`
-      )
-      await new Promise((r) => setTimeout(r, waitSec * 1000))
-    }
-  }
-  throw lastErr
 }
 
 function resolveIarouterBaseUrl(): string {
@@ -215,7 +187,7 @@ Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL
     })
     const model = resolveIarouterModel()
     console.log('[gestor-prompt] enviando para iarouter:', { baseUrl: resolveIarouterBaseUrl(), model })
-    const response = await callWithRetry(client, {
+    const response = await client.messages.create({
       model,
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
@@ -252,12 +224,13 @@ Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL
     const msg = err instanceof Error ? err.message : 'Erro ao chamar Claude'
     const status = (err as { status?: number })?.status
     if (status === 429 || /429|rate.?limit/i.test(msg)) {
+      const retryAfter = parseResetSeconds(msg) + 1
       return Response.json(
         {
-          error:
-            'O modelo Opus está com limite de requisições atingido no momento. Aguarde alguns segundos e tente novamente.',
+          error: `Limite de requisições atingido. Tentando novamente em ${retryAfter}s...`,
+          retryAfter,
         },
-        { status: 429 }
+        { status: 429, headers: { 'Retry-After': String(retryAfter) } }
       )
     }
     return Response.json({ error: msg }, { status: 500 })

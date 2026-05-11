@@ -171,6 +171,8 @@ export default function GestorPromptPage() {
   }
 
   // ── Gerar sugestões ────────────────────────────────────────────────────
+  // Faz a request 1x; se voltar 429 com retryAfter, espera e tenta de novo
+  // automaticamente (até 3 tentativas total). Mantém o spinner girando.
   async function generate() {
     setError(null)
     setSuggestions([])
@@ -187,59 +189,84 @@ export default function GestorPromptPage() {
     }
 
     setGenerating(true)
+
+    const MAX_429_RETRIES = 2 // 1 chamada inicial + 2 retries automáticas
+
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       if (apiKey.trim()) headers['x-anthropic-key'] = apiKey.trim()
-
-      const res = await fetch('/api/atendimentos/gestor-prompt', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          currentPrompt,
-          atendimentoIds: Array.from(selectedIds),
-        }),
+      const bodyJson = JSON.stringify({
+        currentPrompt,
+        atendimentoIds: Array.from(selectedIds),
       })
 
-      // Vercel pode devolver HTML em caso de timeout/erro de runtime — não
-      // tenta parsear como JSON cego, lê como texto e tenta JSON depois.
-      const raw = await res.text()
-      let data: { error?: string; suggestions?: PromptSuggestion[] } = {}
-      try {
-        data = raw ? JSON.parse(raw) : {}
-      } catch {
-        // Resposta não-JSON (HTML de erro, timeout da Function, etc).
-        if (res.status === 504 || /timeout/i.test(raw)) {
-          setError(
-            'A análise demorou demais e o servidor encerrou a request. Tente novamente com menos atendimentos ou aguarde alguns segundos.'
-          )
-        } else {
-          setError(
-            `Resposta inesperada do servidor (status ${res.status}). Tente novamente em alguns segundos.`
-          )
+      let lastErrorMsg = 'Erro ao gerar sugestões'
+
+      for (let attempt = 0; attempt <= MAX_429_RETRIES; attempt++) {
+        const res = await fetch('/api/atendimentos/gestor-prompt', {
+          method: 'POST',
+          headers,
+          body: bodyJson,
+        })
+
+        // Vercel pode devolver HTML em caso de timeout/erro de runtime — não
+        // tenta parsear como JSON cego, lê como texto e tenta JSON depois.
+        const raw = await res.text()
+        let data: { error?: string; suggestions?: PromptSuggestion[]; retryAfter?: number } = {}
+        try {
+          data = raw ? JSON.parse(raw) : {}
+        } catch {
+          if (res.status === 504 || /timeout/i.test(raw)) {
+            setError(
+              'A análise demorou demais e o servidor encerrou a request. Tente novamente com menos atendimentos ou aguarde alguns segundos.'
+            )
+          } else {
+            setError(
+              `Resposta inesperada do servidor (status ${res.status}). Tente novamente em alguns segundos.`
+            )
+          }
+          return
         }
+
+        // 429 → aguarda retryAfter (ou Retry-After header) e tenta de novo
+        if (res.status === 429 && attempt < MAX_429_RETRIES) {
+          const headerRetry = parseInt(res.headers.get('Retry-After') ?? '0', 10)
+          const waitSec = data.retryAfter ?? (headerRetry > 0 ? headerRetry : 6)
+          setError(`Limite de cota atingido. Tentando novamente em ${waitSec}s... (${attempt + 1}/${MAX_429_RETRIES + 1})`)
+          await new Promise((r) => setTimeout(r, waitSec * 1000))
+          continue
+        }
+
+        // Servidor sem chave configurada → pede ao usuário
+        if (res.status === 503) {
+          setNeedsApiKey(true)
+          setError(
+            apiKey.trim()
+              ? 'A chave salva foi rejeitada pelo servidor. Confira ou cole uma nova do iarouter.'
+              : 'O servidor não tem chave do Softcom IA Router configurada. Cole sua chave abaixo para usar pelo navegador.'
+          )
+          return
+        }
+
+        if (!res.ok) {
+          lastErrorMsg = data?.error || `Erro ${res.status} ao gerar sugestões`
+          setError(lastErrorMsg)
+          return
+        }
+
+        // Sucesso
+        const list: PromptSuggestion[] = Array.isArray(data?.suggestions) ? data.suggestions : []
+        setSuggestions(list)
+        setAppliedIds(new Set(list.map((s) => s.id)))
+        setNeedsApiKey(false)
+        setError(null)
         return
       }
 
-      // Servidor sem chave configurada → pede ao usuário
-      if (res.status === 503) {
-        setNeedsApiKey(true)
-        setError(
-          apiKey.trim()
-            ? 'A chave salva foi rejeitada pelo servidor. Confira ou cole uma nova do iarouter.'
-            : 'O servidor não tem chave do Softcom IA Router configurada. Cole sua chave abaixo para usar pelo navegador.'
-        )
-        return
-      }
-
-      if (!res.ok) {
-        setError(data?.error || 'Erro ao gerar sugestões')
-        return
-      }
-      const list: PromptSuggestion[] = Array.isArray(data?.suggestions) ? data.suggestions : []
-      setSuggestions(list)
-      // Por padrão, todas começam marcadas
-      setAppliedIds(new Set(list.map((s) => s.id)))
-      setNeedsApiKey(false)
+      // Esgotou retries em 429
+      setError(
+        'O modelo está com a cota esgotada no momento. Tente novamente em alguns minutos ou troque o modelo no servidor.'
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao gerar sugestões')
     } finally {

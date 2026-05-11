@@ -355,7 +355,7 @@ export default function GestorPromptPage() {
         <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
           <h2 className="text-xs uppercase tracking-wider text-muted flex items-center gap-1.5">
             <Key size={12} />
-            Chave do Softcom IA Router · Opus 4.6
+            Chave do Softcom IA Router · Sonnet 4.5
           </h2>
           {apiKey && (
             <button
@@ -391,7 +391,7 @@ export default function GestorPromptPage() {
         <p className="text-[11px] text-muted mt-2 leading-relaxed">
           Endpoint:{' '}
           <code className="text-orange-400">https://iarouter.softcomia.com/v1</code>{' '}
-          · Modelo: <code className="text-orange-400">cc/claude-opus-4-6</code>
+          · Modelo: <code className="text-orange-400">cc/claude-sonnet-4-5</code>
           <br />
           Salvo no <span className="text-primary">localStorage</span> deste navegador
           apenas. Enviado via header <code className="text-orange-400">x-anthropic-key</code>{' '}

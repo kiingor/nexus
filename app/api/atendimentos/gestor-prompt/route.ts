@@ -14,10 +14,11 @@ import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import type { AtendimentoRecord } from '@/lib/types'
 
-// O iarouter exige prefixo de provider (ex: cc/claude-opus-4-6).
+// O iarouter exige prefixo de provider (ex: cc/claude-sonnet-4-5).
+// Default usa Sonnet (cota mais alta que Opus, mesmo nível de qualidade pra análise).
 // Adiciona 'cc/' automaticamente quando o modelo vem sem prefixo.
 function resolveIarouterModel(): string {
-  const raw = process.env.IAROUTER_MODEL?.trim() || 'claude-opus-4-6'
+  const raw = process.env.IAROUTER_MODEL?.trim() || 'claude-sonnet-4-5'
   return raw.includes('/') ? raw : `cc/${raw}`
 }
 

@@ -84,7 +84,7 @@ Devolva APENAS JSON válido no formato:
   ]
 }
 
-Limite-se a no máximo 8 sugestões, priorizando as de maior impacto. Se algum atendimento não trouxer aprendizado novo, ignore.`
+Limite-se a no máximo 5 sugestões, priorizando as de maior impacto. Se algum atendimento não trouxer aprendizado novo, ignore. Seja conciso — cada sugestão direto ao ponto.`
 
 function buildAtendimentoSummary(a: AtendimentoRecord): string {
   const lines: string[] = []
@@ -109,7 +109,9 @@ function buildAtendimentoSummary(a: AtendimentoRecord): string {
   }
   const transcript = a.transcricao_formatada || a.transcricao
   if (transcript) {
-    const truncated = String(transcript).slice(0, 1500)
+    // 800 chars cabe ligações inteiras e os trechos mais relevantes de chats
+    // longos, sem estourar o tempo de processamento do modelo.
+    const truncated = String(transcript).slice(0, 800)
     lines.push(`- Transcrição (truncada):\n${truncated}`)
   }
   return lines.join('\n')
@@ -186,13 +188,21 @@ Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL
       baseURL: resolveIarouterBaseUrl(),
     })
     const model = resolveIarouterModel()
-    console.log('[gestor-prompt] enviando para iarouter:', { baseUrl: resolveIarouterBaseUrl(), model })
+    const startTime = Date.now()
+    console.log('[gestor-prompt] enviando para iarouter:', {
+      baseUrl: resolveIarouterBaseUrl(),
+      model,
+      inputChars: userMessage.length,
+    })
     const response = await client.messages.create({
       model,
-      max_tokens: 4096,
+      // Reduzido de 4096 pra 2048 — corta tempo de geração pela metade,
+      // 5 sugestões concisas cabem facilmente em 2k tokens.
+      max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
     })
+    console.log('[gestor-prompt] resposta em', Date.now() - startTime, 'ms')
 
     const text = response.content
       .filter((b): b is Anthropic.Messages.TextBlock => b.type === 'text')

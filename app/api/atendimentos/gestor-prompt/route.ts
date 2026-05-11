@@ -188,48 +188,63 @@ Analise os atendimentos acima e proponha melhorias separadas para o PROMPT_ATUAL
       baseURL: resolveIarouterBaseUrl(),
     })
     const model = resolveIarouterModel()
-    const startTime = Date.now()
-    console.log('[gestor-prompt] enviando para iarouter:', {
+    console.log('[gestor-prompt] enviando para iarouter (stream):', {
       baseUrl: resolveIarouterBaseUrl(),
       model,
       inputChars: userMessage.length,
     })
-    const response = await client.messages.create({
+
+    // Streaming: a Function retorna o ReadableStream imediatamente. O tempo
+    // gasto enquanto o conteúdo flui NÃO conta pro timeout da Vercel, então
+    // podemos esperar respostas longas do Opus sem estourar 10s.
+    //
+    // Enviamos só o texto bruto acumulado da resposta. O cliente parseia o
+    // JSON depois que o stream termina.
+    const anthropicStream = client.messages.stream({
       model,
-      // Reduzido de 4096 pra 2048 — corta tempo de geração pela metade,
-      // 5 sugestões concisas cabem facilmente em 2k tokens.
       max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
     })
-    console.log('[gestor-prompt] resposta em', Date.now() - startTime, 'ms')
 
-    const text = response.content
-      .filter((b): b is Anthropic.Messages.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n')
+    const encoder = new TextEncoder()
+    const readable = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const startTime = Date.now()
+        try {
+          for await (const event of anthropicStream) {
+            if (
+              event.type === 'content_block_delta' &&
+              event.delta.type === 'text_delta' &&
+              event.delta.text
+            ) {
+              controller.enqueue(encoder.encode(event.delta.text))
+            }
+          }
+          console.log('[gestor-prompt] stream completo em', Date.now() - startTime, 'ms')
+          controller.close()
+        } catch (err) {
+          console.error('[gestor-prompt] erro no stream:', err)
+          // Em vez de quebrar, anexa um marcador no stream pra o cliente
+          // detectar que houve erro depois.
+          const msg = err instanceof Error ? err.message : String(err)
+          const errPayload = `\n\n__STREAM_ERROR__${JSON.stringify({
+            status: (err as { status?: number })?.status,
+            message: msg,
+          })}__END__`
+          controller.enqueue(encoder.encode(errPayload))
+          controller.close()
+        }
+      },
+    })
 
-    // Extrai JSON tolerante a wrapping em markdown
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      return Response.json(
-        { error: 'Resposta da IA sem JSON válido', raw: text },
-        { status: 502 }
-      )
-    }
-
-    let parsed: { suggestions?: PromptSuggestion[] }
-    try {
-      parsed = JSON.parse(jsonMatch[0])
-    } catch {
-      return Response.json(
-        { error: 'JSON da IA inválido', raw: text },
-        { status: 502 }
-      )
-    }
-
-    const suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : []
-    return Response.json({ suggestions })
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro ao chamar Claude'
     const status = (err as { status?: number })?.status

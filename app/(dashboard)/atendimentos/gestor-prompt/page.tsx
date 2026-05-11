@@ -209,53 +209,103 @@ export default function GestorPromptPage() {
           body: bodyJson,
         })
 
-        // Vercel pode devolver HTML em caso de timeout/erro de runtime — não
-        // tenta parsear como JSON cego, lê como texto e tenta JSON depois.
-        const raw = await res.text()
-        let data: { error?: string; suggestions?: PromptSuggestion[]; retryAfter?: number } = {}
-        try {
-          data = raw ? JSON.parse(raw) : {}
-        } catch {
-          if (res.status === 504 || /timeout/i.test(raw)) {
-            setError(
-              'A análise demorou demais e o servidor encerrou a request. Tente novamente com menos atendimentos ou aguarde alguns segundos.'
-            )
-          } else {
-            setError(
-              `Resposta inesperada do servidor (status ${res.status}). Tente novamente em alguns segundos.`
-            )
+        // Erros de pré-processamento (400, 429, 500, 503) ainda vêm como JSON
+        // do servidor. Apenas o sucesso vem como text/plain (stream).
+        const contentType = res.headers.get('content-type') ?? ''
+        const isStreaming = contentType.startsWith('text/plain')
+
+        // ─── Erros: lê como texto, tenta JSON ────────────────────────────
+        if (!isStreaming) {
+          const raw = await res.text()
+          let data: { error?: string; retryAfter?: number } = {}
+          try {
+            data = raw ? JSON.parse(raw) : {}
+          } catch {
+            if (res.status === 504 || /timeout/i.test(raw)) {
+              setError(
+                'A análise demorou demais e o servidor encerrou a request. Tente novamente com menos atendimentos ou aguarde alguns segundos.'
+              )
+            } else {
+              setError(
+                `Resposta inesperada do servidor (status ${res.status}). Tente novamente em alguns segundos.`
+              )
+            }
+            return
           }
-          return
-        }
 
-        // 429 → aguarda retryAfter (ou Retry-After header) e tenta de novo
-        if (res.status === 429 && attempt < MAX_429_RETRIES) {
-          const headerRetry = parseInt(res.headers.get('Retry-After') ?? '0', 10)
-          const waitSec = data.retryAfter ?? (headerRetry > 0 ? headerRetry : 6)
-          setError(`Limite de cota atingido. Tentando novamente em ${waitSec}s... (${attempt + 1}/${MAX_429_RETRIES + 1})`)
-          await new Promise((r) => setTimeout(r, waitSec * 1000))
-          continue
-        }
+          if (res.status === 429 && attempt < MAX_429_RETRIES) {
+            const headerRetry = parseInt(res.headers.get('Retry-After') ?? '0', 10)
+            const waitSec = data.retryAfter ?? (headerRetry > 0 ? headerRetry : 6)
+            setError(`Limite de cota atingido. Tentando novamente em ${waitSec}s... (${attempt + 1}/${MAX_429_RETRIES + 1})`)
+            await new Promise((r) => setTimeout(r, waitSec * 1000))
+            continue
+          }
 
-        // Servidor sem chave configurada → pede ao usuário
-        if (res.status === 503) {
-          setNeedsApiKey(true)
-          setError(
-            apiKey.trim()
-              ? 'A chave salva foi rejeitada pelo servidor. Confira ou cole uma nova do iarouter.'
-              : 'O servidor não tem chave do Softcom IA Router configurada. Cole sua chave abaixo para usar pelo navegador.'
-          )
-          return
-        }
+          if (res.status === 503) {
+            setNeedsApiKey(true)
+            setError(
+              apiKey.trim()
+                ? 'A chave salva foi rejeitada pelo servidor. Confira ou cole uma nova do iarouter.'
+                : 'O servidor não tem chave do Softcom IA Router configurada. Cole sua chave abaixo para usar pelo navegador.'
+            )
+            return
+          }
 
-        if (!res.ok) {
           lastErrorMsg = data?.error || `Erro ${res.status} ao gerar sugestões`
           setError(lastErrorMsg)
           return
         }
 
-        // Sucesso
-        const list: PromptSuggestion[] = Array.isArray(data?.suggestions) ? data.suggestions : []
+        // ─── Sucesso: lê o stream ────────────────────────────────────────
+        if (!res.body) {
+          setError('Servidor não devolveu corpo de resposta.')
+          return
+        }
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let accumulated = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          accumulated += decoder.decode(value, { stream: true })
+        }
+
+        // Detecta marcador de erro injetado pelo stream do servidor
+        const errMatch = accumulated.match(/__STREAM_ERROR__(\{[\s\S]*?\})__END__/)
+        if (errMatch) {
+          try {
+            const errData = JSON.parse(errMatch[1]) as { status?: number; message?: string }
+            if (errData.status === 429 && attempt < MAX_429_RETRIES) {
+              const reset = errData.message?.match(/reset after (\d+)s/i)
+              const waitSec = reset ? parseInt(reset[1], 10) + 1 : 6
+              setError(`Limite de cota atingido. Tentando novamente em ${waitSec}s... (${attempt + 1}/${MAX_429_RETRIES + 1})`)
+              await new Promise((r) => setTimeout(r, waitSec * 1000))
+              continue
+            }
+            setError(errData.message || 'Erro durante a geração.')
+            return
+          } catch {
+            setError('Erro durante a geração da resposta.')
+            return
+          }
+        }
+
+        // Extrai JSON da resposta acumulada (tolerante a wrapping markdown)
+        const jsonMatch = accumulated.match(/\{[\s\S]*\}/)
+        if (!jsonMatch) {
+          setError('Resposta da IA sem JSON válido. Tente novamente.')
+          return
+        }
+        let parsed: { suggestions?: PromptSuggestion[] }
+        try {
+          parsed = JSON.parse(jsonMatch[0])
+        } catch {
+          setError('JSON da IA inválido. Tente novamente.')
+          return
+        }
+
+        const list: PromptSuggestion[] = Array.isArray(parsed.suggestions) ? parsed.suggestions : []
         setSuggestions(list)
         setAppliedIds(new Set(list.map((s) => s.id)))
         setNeedsApiKey(false)

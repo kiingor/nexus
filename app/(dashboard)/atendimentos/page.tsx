@@ -6,9 +6,40 @@ import { Spinner } from '@/components/ui/Spinner'
 import { AtendimentosList } from '@/components/atendimentos/AtendimentosList'
 import { AtendimentoDetailModal } from '@/components/atendimentos/AtendimentoDetailModal'
 import Link from 'next/link'
-import { Headphones, CheckCircle2, ArrowRightLeft, XCircle, Filter, DollarSign, PhoneCall, Sparkles } from 'lucide-react'
+import {
+  Headphones,
+  CheckCircle2,
+  ArrowRightLeft,
+  XCircle,
+  Filter,
+  DollarSign,
+  PhoneCall,
+  Sparkles,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
-import { formatCusto, toNumber } from '@/lib/atendimentos'
+import { formatCusto } from '@/lib/atendimentos'
+
+const PAGE_SIZE = 30
+
+type StatsResponse = {
+  total: number
+  em_atendimento: number
+  resolvida_ia: number
+  transferida: number
+  interrompida: number
+  custoTotal: number
+}
+
+const STATS_EMPTY: StatsResponse = {
+  total: 0,
+  em_atendimento: 0,
+  resolvida_ia: 0,
+  transferida: 0,
+  interrompida: 0,
+  custoTotal: 0,
+}
 
 type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 'interrompida'
 type DestinoFilter = 'all' | 'servicedesk' | 'financeiro'
@@ -53,34 +84,129 @@ export default function AtendimentosPage() {
   const [destinoFilter, setDestinoFilter] = useState<DestinoFilter>('all')
   const [comProblema, setComProblema] = useState(false)
   const [search, setSearch] = useState('')
+  const [searchDebounced, setSearchDebounced] = useState('')
   const [dayFilter, setDayFilter] = useState('')
   const [hourFilter, setHourFilter] = useState<'all' | string>('all')
   const [sentimentoFilter, setSentimentoFilter] = useState<SentimentoFilter>('all')
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ limit: '200' })
+  // Paginação
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalFiltered, setTotalFiltered] = useState(0)
+
+  // Stats globais (todos os atendimentos respeitando filtros, sem paginação)
+  const [stats, setStats] = useState<StatsResponse>(STATS_EMPTY)
+
+  // Debounce da busca (evita request a cada tecla)
+  useEffect(() => {
+    const t = setTimeout(() => setSearchDebounced(search.trim()), 350)
+    return () => clearTimeout(t)
+  }, [search])
+
+  // Volta pra página 1 sempre que algum filtro muda
+  useEffect(() => {
+    setPage(1)
+  }, [
+    statusFilter,
+    destinoFilter,
+    comProblema,
+    dayFilter,
+    hourFilter,
+    sentimentoFilter,
+    searchDebounced,
+  ])
+
+  // Constrói os params compartilhados entre /atendimentos e /atendimentos/stats
+  const buildQueryParams = useCallback(
+    (includePagination: boolean): URLSearchParams => {
+      const params = new URLSearchParams()
       if (statusFilter !== 'all') params.set('status', statusFilter)
       if (destinoFilter !== 'all') params.set('destino', destinoFilter)
+      if (sentimentoFilter !== 'all') params.set('sentimento', sentimentoFilter)
       if (comProblema) params.set('com_problema', 'true')
+      if (searchDebounced) params.set('search', searchDebounced)
       const { from, to } = buildDateRange(dayFilter, hourFilter)
       if (from) params.set('from', from)
       if (to) params.set('to', to)
+      if (includePagination) {
+        params.set('page', String(page))
+        params.set('pageSize', String(PAGE_SIZE))
+      }
+      return params
+    },
+    [
+      statusFilter,
+      destinoFilter,
+      sentimentoFilter,
+      comProblema,
+      searchDebounced,
+      dayFilter,
+      hourFilter,
+      page,
+    ]
+  )
 
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = buildQueryParams(true)
       const res = await fetch(`/api/atendimentos?${params.toString()}`)
       const data = await res.json()
-      setRecords(Array.isArray(data) ? data : [])
+      // Resposta nova: { data, total, page, pageSize, totalPages }
+      // Mantém retrocompatibilidade com formato array bruto, por segurança.
+      if (Array.isArray(data)) {
+        setRecords(data)
+        setTotalPages(1)
+        setTotalFiltered(data.length)
+      } else {
+        setRecords(Array.isArray(data?.data) ? data.data : [])
+        setTotalPages(Number(data?.totalPages) || 1)
+        setTotalFiltered(Number(data?.total) || 0)
+      }
     } catch {
       setRecords([])
+      setTotalPages(1)
+      setTotalFiltered(0)
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, destinoFilter, comProblema, dayFilter, hourFilter])
+  }, [buildQueryParams])
+
+  const loadStats = useCallback(async () => {
+    try {
+      const params = buildQueryParams(false)
+      const res = await fetch(`/api/atendimentos/stats?${params.toString()}`)
+      const data = await res.json()
+      if (data && typeof data === 'object' && !data.error) {
+        setStats({
+          total: Number(data.total) || 0,
+          em_atendimento: Number(data.em_atendimento) || 0,
+          resolvida_ia: Number(data.resolvida_ia) || 0,
+          transferida: Number(data.transferida) || 0,
+          interrompida: Number(data.interrompida) || 0,
+          custoTotal: Number(data.custoTotal) || 0,
+        })
+      }
+    } catch {
+      // mantém o último stats em caso de erro transitório
+    }
+  }, [buildQueryParams])
 
   useEffect(() => {
     load()
   }, [load])
+
+  // Stats: recarrega quando filtros mudam, mas NÃO quando só a página muda.
+  // Para isso, dependência é construída a partir dos params sem paginação.
+  const statsKey = useMemo(
+    () => buildQueryParams(false).toString(),
+    [buildQueryParams]
+  )
+  useEffect(() => {
+    loadStats()
+    // statsKey é uma string serializada — quando ela muda, recarrega.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statsKey])
 
   const openDetail = useCallback(async (record: AtendimentoRecord) => {
     setSelected(record)
@@ -97,45 +223,12 @@ export default function AtendimentosPage() {
     }
   }, [])
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    let out = records
-    if (sentimentoFilter !== 'all') {
-      out = out.filter((r) => {
-        const s = (r.sentimento_cliente || '').toLowerCase()
-        if (sentimentoFilter === 'positivo')
-          return /positiv|satisfe|feliz|bom|[óo]timo|excelente/i.test(s)
-        if (sentimentoFilter === 'negativo')
-          return /negativ|insatisfe|irrita|frustra|ruim|p[ée]ssimo|raiva/i.test(s)
-        if (sentimentoFilter === 'neutro') return /neutr|ok|indifer/i.test(s)
-        return true
-      })
-    }
-    if (!q) return out
-    return out.filter((r) =>
-      [
-        r.nome_empresa,
-        r.cnpj,
-        r.phone,
-        r.cliente_nome,
-        r.problema_relatado,
-        r.id_ligacao,
-        r.id,
-      ]
-        .filter((v) => v != null && v !== '')
-        .some((v) => String(v).toLowerCase().includes(q))
-    )
-  }, [records, search, sentimentoFilter])
-
-  const stats = useMemo(() => {
-    const total = records.length
-    const emAtendimento = records.filter((r) => r.status === 'em_atendimento').length
-    const resolvidas = records.filter((r) => r.status === 'resolvida_ia').length
-    const transferidas = records.filter((r) => r.status === 'transferida').length
-    const interrompidas = records.filter((r) => r.status === 'interrompida').length
-    const custoTotal = records.reduce((sum, r) => sum + (toNumber(r.custo_real) ?? 0), 0)
-    return { total, emAtendimento, resolvidas, transferidas, interrompidas, custoTotal }
-  }, [records])
+  // Filtragem agora é toda server-side; `records` já vem com a página
+  // certa após aplicar todos os filtros. Mantemos só uma variável de
+  // compatibilidade visual pra empty state.
+  const hasRecords = records.length > 0
+  const rangeStart = (page - 1) * PAGE_SIZE + 1
+  const rangeEnd = Math.min(page * PAGE_SIZE, totalFiltered)
 
   return (
     <div>
@@ -157,31 +250,32 @@ export default function AtendimentosPage() {
         </Link>
       </div>
 
-      {/* Stats */}
+      {/* Stats — números globais respeitando os filtros atuais (todas as
+          páginas, não só a atual). Vêm do endpoint /atendimentos/stats. */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
         <StatCard icon={<Headphones size={18} />} label="Total" value={String(stats.total)} />
         <StatCard
           icon={<PhoneCall size={18} />}
           label="Em atendimento"
-          value={String(stats.emAtendimento)}
+          value={String(stats.em_atendimento)}
           accent="blue"
         />
         <StatCard
           icon={<CheckCircle2 size={18} />}
           label="Resolvidas IA"
-          value={String(stats.resolvidas)}
+          value={String(stats.resolvida_ia)}
           accent="green"
         />
         <StatCard
           icon={<ArrowRightLeft size={18} />}
           label="Transferidas"
-          value={String(stats.transferidas)}
+          value={String(stats.transferida)}
           accent="yellow"
         />
         <StatCard
           icon={<XCircle size={18} />}
           label="Interrompidas"
-          value={String(stats.interrompidas)}
+          value={String(stats.interrompida)}
           accent="red"
         />
         <StatCard
@@ -293,7 +387,7 @@ export default function AtendimentosPage() {
         <div className="flex items-center justify-center py-16">
           <Spinner size="md" />
         </div>
-      ) : filtered.length === 0 ? (
+      ) : !hasRecords ? (
         <div className="glass p-12 text-center">
           <Headphones size={32} className="mx-auto mb-3 text-muted" />
           <p className="text-primary font-medium mb-1">Nenhum atendimento encontrado</p>
@@ -302,7 +396,17 @@ export default function AtendimentosPage() {
           </p>
         </div>
       ) : (
-        <AtendimentosList records={filtered} onSelect={openDetail} />
+        <>
+          <AtendimentosList records={records} onSelect={openDetail} />
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            total={totalFiltered}
+            onChange={setPage}
+          />
+        </>
       )}
 
       <AtendimentoDetailModal
@@ -312,6 +416,97 @@ export default function AtendimentosPage() {
         avaliacoes={avaliacoes}
         loadingAvaliacoes={loadingAvaliacoes}
       />
+    </div>
+  )
+}
+
+// Constrói uma lista compacta de páginas a exibir, com ellipses.
+// Ex: [1, 2, '...', 7, 8, 9, '...', 19, 20] para 20 páginas, atual=8.
+function buildPageList(current: number, total: number): Array<number | 'ellipsis'> {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  const out: Array<number | 'ellipsis'> = []
+  out.push(1)
+  if (current > 4) out.push('ellipsis')
+  const start = Math.max(2, current - 2)
+  const end = Math.min(total - 1, current + 2)
+  for (let i = start; i <= end; i++) out.push(i)
+  if (current < total - 3) out.push('ellipsis')
+  out.push(total)
+  return out
+}
+
+function Pagination({
+  page,
+  totalPages,
+  rangeStart,
+  rangeEnd,
+  total,
+  onChange,
+}: {
+  page: number
+  totalPages: number
+  rangeStart: number
+  rangeEnd: number
+  total: number
+  onChange: (p: number) => void
+}) {
+  if (totalPages <= 1) return null
+  const pageList = buildPageList(page, totalPages)
+
+  return (
+    <div className="mt-4 flex items-center justify-between flex-wrap gap-3">
+      <span className="text-xs text-muted">
+        Mostrando{' '}
+        <span className="text-primary font-medium">{rangeStart.toLocaleString('pt-BR')}</span>
+        {'–'}
+        <span className="text-primary font-medium">{rangeEnd.toLocaleString('pt-BR')}</span>
+        {' de '}
+        <span className="text-primary font-medium">{total.toLocaleString('pt-BR')}</span>
+        {' atendimentos'}
+      </span>
+
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(1, page - 1))}
+          disabled={page <= 1}
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-glass-border bg-glass text-xs text-muted hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        >
+          <ChevronLeft size={14} />
+          Anterior
+        </button>
+
+        {pageList.map((p, idx) =>
+          p === 'ellipsis' ? (
+            <span key={`e${idx}`} className="px-2 text-muted text-xs">
+              …
+            </span>
+          ) : (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onChange(p)}
+              className={`min-w-[32px] px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                p === page
+                  ? 'bg-orange-500/15 border border-orange-500/40 text-orange-300'
+                  : 'border border-glass-border bg-glass text-muted hover:text-primary'
+              }`}
+            >
+              {p}
+            </button>
+          )
+        )}
+
+        <button
+          type="button"
+          onClick={() => onChange(Math.min(totalPages, page + 1))}
+          disabled={page >= totalPages}
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-glass-border bg-glass text-xs text-muted hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        >
+          Próxima
+          <ChevronRight size={14} />
+        </button>
+      </div>
     </div>
   )
 }

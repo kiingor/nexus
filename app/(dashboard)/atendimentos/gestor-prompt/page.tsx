@@ -112,11 +112,20 @@ export default function GestorPromptPage() {
   const loadRecords = useCallback(async () => {
     setLoadingRecords(true)
     try {
-      const params = new URLSearchParams({ limit: '100' })
+      // pageSize alto: gestor-prompt mostra a lista pra usuário escolher
+      // atendimentos pra análise. 100 por carga é razoável; quem precisa
+      // de mais usa o filtro de status pra refinar antes.
+      const params = new URLSearchParams({ pageSize: '100', page: '1' })
       if (statusFilter !== 'all') params.set('status', statusFilter)
       const res = await fetch(`/api/atendimentos?${params.toString()}`)
       const data = await res.json()
-      setRecords(Array.isArray(data) ? data : [])
+      // API agora devolve { data, total, page, pageSize, totalPages }.
+      // Fallback pra array bruto pra compatibilidade defensiva.
+      if (Array.isArray(data)) {
+        setRecords(data)
+      } else {
+        setRecords(Array.isArray(data?.data) ? data.data : [])
+      }
     } catch {
       setRecords([])
     } finally {

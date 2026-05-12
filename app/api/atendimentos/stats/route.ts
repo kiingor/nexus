@@ -30,11 +30,22 @@ type Counts = {
   custoTotal: number
 }
 
-function applyFilters(
-  q: ReturnType<ReturnType<typeof createServerClient>['from']>,
+// Generic constraint: aceita qualquer query builder do Supabase JS que
+// suporte os métodos abaixo e retorne ele mesmo (encadeável). Isso cobre
+// tanto chains iniciadas com .select(*, { count: 'exact', head: true })
+// quanto .select('col') usadas pra somar custo.
+type FilterableQuery<T> = {
+  eq: (col: string, val: unknown) => T
+  gte: (col: string, val: unknown) => T
+  lt: (col: string, val: unknown) => T
+  or: (filters: string) => T
+}
+
+function applyFilters<T extends FilterableQuery<T>>(
+  q: T,
   searchParams: URLSearchParams,
   excludeStatus = false
-) {
+): T {
   const status = searchParams.get('status')
   const destino = searchParams.get('destino')
   const cnpj = searchParams.get('cnpj')

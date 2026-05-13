@@ -25,9 +25,13 @@ export async function GET(request: NextRequest) {
   const sentimento = searchParams.get('sentimento') // positivo | neutro | negativo
 
   // Ordena por criado_em desc, nulos no fim, fallback por id.
+  // O select inclui a relação tipo_contato (FK) pra trazer { id, nome, label,
+  // icone, cor } embutido em cada linha — evita N+1.
   let query = supabase
     .from('atendimentos')
-    .select('*', { count: 'exact' })
+    .select('*, tipo_contato:tipo_contato_id(id, nome, label, icone, cor, ativo)', {
+      count: 'exact',
+    })
     .order('criado_em', { ascending: false, nullsFirst: false })
     .order('id', { ascending: false })
     .range(offset, offset + pageSize - 1)

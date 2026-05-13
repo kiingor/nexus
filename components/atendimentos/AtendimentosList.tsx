@@ -1,7 +1,7 @@
 'use client'
 
-import { Building2, Calendar, Clock, Phone } from 'lucide-react'
-import type { AtendimentoRecord } from '@/lib/types'
+import { Building2, Calendar, Clock, MessageCircle, Phone, PhoneCall } from 'lucide-react'
+import type { AtendimentoRecord, TipoContato } from '@/lib/types'
 import { formatCusto, formatDuracao, sentimentoBadge } from '@/lib/atendimentos'
 
 interface Props {
@@ -48,6 +48,24 @@ function destinoBadge(destino: string | null): { label: string; cls: string } | 
   return { label: destino, cls: 'bg-glass border-glass-border text-muted' }
 }
 
+// Badge de tipo de contato (ligação x chat). Tenta usar a cor configurada na
+// tabela tipo_contato; se não houver, mapeia uma paleta padrão pra ligação/chat.
+function tipoContatoBadge(tc: TipoContato | null): { label: string; cls: string; icon: 'phone' | 'message' } | null {
+  if (!tc) return null
+  const palette: Record<string, string> = {
+    blue:   'bg-blue-500/10 border-blue-500/25 text-blue-400',
+    green:  'bg-green-500/10 border-green-500/25 text-green-400',
+    orange: 'bg-orange-500/10 border-orange-500/25 text-orange-400',
+    purple: 'bg-purple-500/10 border-purple-500/25 text-purple-400',
+    yellow: 'bg-yellow-500/10 border-yellow-500/25 text-yellow-400',
+    red:    'bg-red-500/10 border-red-500/25 text-red-400',
+  }
+  const cls = (tc.cor && palette[tc.cor.toLowerCase()])
+    || (tc.nome === 'ligacao' ? palette.blue : palette.green)
+  const icon: 'phone' | 'message' = tc.nome === 'ligacao' ? 'phone' : 'message'
+  return { label: tc.label, cls, icon }
+}
+
 export function AtendimentosList({ records, onSelect }: Props) {
   return (
     <div className="glass overflow-hidden">
@@ -56,6 +74,7 @@ export function AtendimentosList({ records, onSelect }: Props) {
           <thead>
             <tr className="border-b border-glass-border text-left text-xs uppercase tracking-wider text-muted">
               <th className="px-4 py-3 font-medium">Data</th>
+              <th className="px-4 py-3 font-medium">Tipo</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Destino</th>
               <th className="px-4 py-3 font-medium">Empresa</th>
@@ -70,6 +89,7 @@ export function AtendimentosList({ records, onSelect }: Props) {
             {records.map((r) => {
               const st = statusBadge(r.status)
               const dest = destinoBadge(r.destino)
+              const tipo = tipoContatoBadge(r.tipo_contato)
               const problema =
                 r.problema_extraido?.problema?.descricao_tecnica ||
                 r.problema_relatado ||
@@ -86,6 +106,18 @@ export function AtendimentosList({ records, onSelect }: Props) {
                       <Calendar size={12} className="text-muted" />
                       {formatDate(r.data_hora_chegada || r.criado_em)}
                     </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {tipo ? (
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${tipo.cls}`}
+                      >
+                        {tipo.icon === 'phone' ? <PhoneCall size={11} /> : <MessageCircle size={11} />}
+                        {tipo.label}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span

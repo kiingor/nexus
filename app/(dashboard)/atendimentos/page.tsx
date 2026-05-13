@@ -237,9 +237,6 @@ export default function AtendimentosPage() {
       <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-primary">Atendimentos</h1>
-          <p className="text-secondary mt-1">
-            Registro das ligações atendidas pela Renata (Central IA)
-          </p>
         </div>
         <Link
           href="/atendimentos/gestor-prompt"

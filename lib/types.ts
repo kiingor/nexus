@@ -184,14 +184,7 @@ export interface ProblemaExtraido {
   confianca?: 'alta' | 'media' | 'baixa' | string | null
 }
 
-export interface TipoContato {
-  id: number
-  nome: string  // 'ligacao' | 'chat' | ...
-  label: string
-  icone: string | null
-  cor: string | null
-  ativo: boolean
-}
+export type TipoContato = 'ligacao' | 'chat'
 
 export interface AtendimentoRecord {
   id: number
@@ -218,9 +211,8 @@ export interface AtendimentoRecord {
   custo_real: number | string | null
   sentimento_cliente: string | null
   criado_em: string | null
-  // FK + relação (preenchidos quando o select incluir tipo_contato(*))
-  tipo_contato_id: number | null
-  tipo_contato: TipoContato | null
+  // Tipo de contato (coluna direta na tabela atendimentos): 'ligacao' | 'chat'
+  tipo_contato: TipoContato | string | null
 }
 
 export interface AvaliacaoAtendimentoRecord {

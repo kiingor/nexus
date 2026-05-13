@@ -1,7 +1,7 @@
 'use client'
 
 import { Building2, Calendar, Clock, MessageCircle, Phone, PhoneCall } from 'lucide-react'
-import type { AtendimentoRecord, TipoContato } from '@/lib/types'
+import type { AtendimentoRecord } from '@/lib/types'
 import { formatCusto, formatDuracao, sentimentoBadge } from '@/lib/atendimentos'
 
 interface Props {
@@ -48,22 +48,31 @@ function destinoBadge(destino: string | null): { label: string; cls: string } | 
   return { label: destino, cls: 'bg-glass border-glass-border text-muted' }
 }
 
-// Badge de tipo de contato (ligação x chat). Tenta usar a cor configurada na
-// tabela tipo_contato; se não houver, mapeia uma paleta padrão pra ligação/chat.
-function tipoContatoBadge(tc: TipoContato | null): { label: string; cls: string; icon: 'phone' | 'message' } | null {
-  if (!tc) return null
-  const palette: Record<string, string> = {
-    blue:   'bg-blue-500/10 border-blue-500/25 text-blue-400',
-    green:  'bg-green-500/10 border-green-500/25 text-green-400',
-    orange: 'bg-orange-500/10 border-orange-500/25 text-orange-400',
-    purple: 'bg-purple-500/10 border-purple-500/25 text-purple-400',
-    yellow: 'bg-yellow-500/10 border-yellow-500/25 text-yellow-400',
-    red:    'bg-red-500/10 border-red-500/25 text-red-400',
+// Badge de tipo de contato. Lê a string da coluna tipo_contato em atendimentos.
+function tipoContatoBadge(
+  tipo: string | null
+): { label: string; cls: string; icon: 'phone' | 'message' } | null {
+  if (!tipo) return null
+  if (tipo === 'ligacao') {
+    return {
+      label: 'Ligação',
+      cls: 'bg-blue-500/10 border-blue-500/25 text-blue-400',
+      icon: 'phone',
+    }
   }
-  const cls = (tc.cor && palette[tc.cor.toLowerCase()])
-    || (tc.nome === 'ligacao' ? palette.blue : palette.green)
-  const icon: 'phone' | 'message' = tc.nome === 'ligacao' ? 'phone' : 'message'
-  return { label: tc.label, cls, icon }
+  if (tipo === 'chat') {
+    return {
+      label: 'Chat',
+      cls: 'bg-green-500/10 border-green-500/25 text-green-400',
+      icon: 'message',
+    }
+  }
+  // Fallback pra qualquer valor inesperado — mostra cru com badge neutro
+  return {
+    label: tipo,
+    cls: 'bg-glass border-glass-border text-muted',
+    icon: 'message',
+  }
 }
 
 export function AtendimentosList({ records, onSelect }: Props) {
@@ -89,7 +98,7 @@ export function AtendimentosList({ records, onSelect }: Props) {
             {records.map((r) => {
               const st = statusBadge(r.status)
               const dest = destinoBadge(r.destino)
-              const tipo = tipoContatoBadge(r.tipo_contato)
+              const tipo = tipoContatoBadge(r.tipo_contato ?? null)
               const problema =
                 r.problema_extraido?.problema?.descricao_tecnica ||
                 r.problema_relatado ||

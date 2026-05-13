@@ -292,10 +292,13 @@ export default function AtendimentosPage() {
           Filtros
         </div>
 
+        {/* Filtros: fundo preto + texto/números em laranja. As <option>
+            também recebem bg-black text-orange-400 pra que o dropdown
+            nativo do navegador siga o mesmo padrão visual. */}
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          className="bg-glass border border-glass-border rounded-xl px-3 py-1.5 text-sm text-primary outline-none focus:border-orange-500/40"
+          className="bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-black [&>option]:text-orange-400"
         >
           <option value="all">Todos status</option>
           <option value="em_atendimento">Em atendimento</option>
@@ -307,7 +310,7 @@ export default function AtendimentosPage() {
         <select
           value={destinoFilter}
           onChange={(e) => setDestinoFilter(e.target.value as DestinoFilter)}
-          className="bg-glass border border-glass-border rounded-xl px-3 py-1.5 text-sm text-primary outline-none focus:border-orange-500/40"
+          className="bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-black [&>option]:text-orange-400"
         >
           <option value="all">Todos destinos</option>
           <option value="servicedesk">ServiceDesk</option>
@@ -317,7 +320,7 @@ export default function AtendimentosPage() {
         <select
           value={sentimentoFilter}
           onChange={(e) => setSentimentoFilter(e.target.value as SentimentoFilter)}
-          className="bg-glass border border-glass-border rounded-xl px-3 py-1.5 text-sm text-primary outline-none focus:border-orange-500/40"
+          className="bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-black [&>option]:text-orange-400"
         >
           <option value="all">Todos sentimentos</option>
           <option value="positivo">Positivo</option>
@@ -329,7 +332,7 @@ export default function AtendimentosPage() {
           type="date"
           value={dayFilter}
           onChange={(e) => setDayFilter(e.target.value)}
-          className="bg-glass border border-glass-border rounded-xl px-3 py-1.5 text-sm text-primary outline-none focus:border-orange-500/40 [color-scheme:dark]"
+          className="bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark]"
         />
 
         <select
@@ -337,7 +340,7 @@ export default function AtendimentosPage() {
           onChange={(e) => setHourFilter(e.target.value)}
           disabled={!dayFilter}
           title={!dayFilter ? 'Escolha um dia primeiro' : 'Faixa de hora'}
-          className="bg-glass border border-glass-border rounded-xl px-3 py-1.5 text-sm text-primary outline-none focus:border-orange-500/40 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-40 disabled:cursor-not-allowed [color-scheme:dark] [&>option]:bg-black [&>option]:text-orange-400"
         >
           <option value="all">Dia todo</option>
           {Array.from({ length: 24 }).map((_, h) => {
@@ -379,7 +382,7 @@ export default function AtendimentosPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar empresa, CNPJ, telefone, ID da ligação..."
-          className="flex-1 min-w-[200px] bg-glass border border-glass-border rounded-xl px-3 py-1.5 text-sm text-primary outline-none focus:border-orange-500/40 placeholder:text-muted"
+          className="flex-1 min-w-[200px] bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 placeholder:text-orange-400/40"
         />
       </div>
 

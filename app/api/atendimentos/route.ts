@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
   const soComProblema = searchParams.get('com_problema') === 'true'
   const search = (searchParams.get('search') || '').trim()
   const sentimento = searchParams.get('sentimento') // positivo | neutro | negativo
+  const tipoContato = searchParams.get('tipo_contato')  // 'ligacao' | 'chat'
 
   // Ordena por criado_em desc, nulos no fim, fallback por id.
   // tipo_contato agora é coluna direta em atendimentos, então select('*')
@@ -42,6 +43,8 @@ export async function GET(request: NextRequest) {
   if (to) query = query.lt('criado_em', to)
   if (soComProblema)
     query = query.eq('problema_extraido->>tem_problema_extraivel', 'true')
+  if (tipoContato === 'ligacao' || tipoContato === 'chat')
+    query = query.eq('tipo_contato', tipoContato)
 
   // Busca: ILIKE em múltiplas colunas. Se o termo for puramente numérico,
   // também tenta casar com id (cast pra texto).

@@ -55,6 +55,7 @@ function applyFilters<T extends FilterableQuery<T>>(
   const soComProblema = searchParams.get('com_problema') === 'true'
   const search = (searchParams.get('search') || '').trim()
   const sentimento = searchParams.get('sentimento')
+  const tipoContato = searchParams.get('tipo_contato')
 
   if (!excludeStatus && status) q = q.eq('status', status)
   if (destino) q = q.eq('destino', destino)
@@ -63,6 +64,8 @@ function applyFilters<T extends FilterableQuery<T>>(
   if (from) q = q.gte('criado_em', from)
   if (to) q = q.lt('criado_em', to)
   if (soComProblema) q = q.eq('problema_extraido->>tem_problema_extraivel', 'true')
+  if (tipoContato === 'ligacao' || tipoContato === 'chat')
+    q = q.eq('tipo_contato', tipoContato)
 
   if (search) {
     const escaped = search.replace(/[%_]/g, '\\$&')

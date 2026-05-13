@@ -44,6 +44,7 @@ const STATS_EMPTY: StatsResponse = {
 type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 'interrompida'
 type DestinoFilter = 'all' | 'servicedesk' | 'financeiro'
 type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
+type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
 
 // Intervalo [from, to) no fuso UTC-3 (horário de Brasília)
 function buildDateRange(day: string, hour: string): { from?: string; to?: string } {
@@ -82,6 +83,7 @@ export default function AtendimentosPage() {
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [destinoFilter, setDestinoFilter] = useState<DestinoFilter>('all')
+  const [tipoContatoFilter, setTipoContatoFilter] = useState<TipoContatoFilter>('all')
   const [comProblema, setComProblema] = useState(false)
   const [search, setSearch] = useState('')
   const [searchDebounced, setSearchDebounced] = useState('')
@@ -109,6 +111,7 @@ export default function AtendimentosPage() {
   }, [
     statusFilter,
     destinoFilter,
+    tipoContatoFilter,
     comProblema,
     dayFilter,
     hourFilter,
@@ -122,6 +125,7 @@ export default function AtendimentosPage() {
       const params = new URLSearchParams()
       if (statusFilter !== 'all') params.set('status', statusFilter)
       if (destinoFilter !== 'all') params.set('destino', destinoFilter)
+      if (tipoContatoFilter !== 'all') params.set('tipo_contato', tipoContatoFilter)
       if (sentimentoFilter !== 'all') params.set('sentimento', sentimentoFilter)
       if (comProblema) params.set('com_problema', 'true')
       if (searchDebounced) params.set('search', searchDebounced)
@@ -137,6 +141,7 @@ export default function AtendimentosPage() {
     [
       statusFilter,
       destinoFilter,
+      tipoContatoFilter,
       sentimentoFilter,
       comProblema,
       searchDebounced,
@@ -312,6 +317,17 @@ export default function AtendimentosPage() {
           <option value="all">Todos destinos</option>
           <option value="servicedesk">ServiceDesk</option>
           <option value="financeiro">Financeiro</option>
+        </select>
+
+        <select
+          value={tipoContatoFilter}
+          onChange={(e) => setTipoContatoFilter(e.target.value as TipoContatoFilter)}
+          title="Tipo de contato"
+          className="bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-black [&>option]:text-orange-400"
+        >
+          <option value="all">Todos tipos</option>
+          <option value="ligacao">Ligação</option>
+          <option value="chat">Chat</option>
         </select>
 
         <select

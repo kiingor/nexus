@@ -12,85 +12,81 @@
  */
 
 ;(async function installFiscalModule() {
-  // ──────────────────────────────────────────────────────────────────────
-  // Conteúdo do módulo (replique aqui o JSON do arquivo fiscal-module.json
-  // se quiser editar inline). Em produção, faça fetch do arquivo.
-  // ──────────────────────────────────────────────────────────────────────
   const FISCAL_MODULE = {
   "name": "Dúvidas Fiscais",
   "type": "instruction",
-  "description": "Orientações fiscais de prévia: CFOPs, CST/CSOSN, devoluções, ST, DIFAL, remessas e FAQ. Sempre validar com a contabilidade antes de emitir.",
+  "description": "Orientações fiscais de prévia: CFOPs, CST/CSOSN, devoluções, ST, DIFAL, remessas e cancelamento. Sempre validar com a contabilidade antes de emitir.",
   "keywords": [
     "fiscal", "cfop", "cst", "csosn", "icms", "st", "substituicao tributaria",
     "devolucao", "difal", "remessa", "transferencia", "venda", "nota fiscal", "nfe"
   ],
   "knowledgeItems": [
     {
-      "title": "Devolução de mercadoria — consumidor final Pessoa Física",
+      "title": "Emitir devolução de mercadoria para consumidor final (Pessoa Física)",
       "type": "instruction",
       "is_active": true,
       "keywords": [
-        "devolucao pf", "devolucao consumidor final", "devolucao pessoa fisica",
-        "cfop 1202", "cfop 2202", "nfe entrada devolucao", "cliente devolveu produto"
+        "devolucao pessoa fisica", "devolucao consumidor final", "devolucao cpf",
+        "cfop 1202", "cfop 2202", "cliente devolveu produto"
       ],
       "content": {
         "type": "instruction",
         "steps": [
-          { "passo": 1, "acao": "Confirme se a operação é dentro do estado (intra) ou para outro estado (inter). CFOP muda em função disso.", "orientacao": null, "atalho": null },
-          { "passo": 2, "acao": "A LOJA é quem emite a NF-e de entrada. O consumidor PF NUNCA emite nota fiscal.", "orientacao": null, "atalho": null },
-          { "passo": 3, "acao": "Emita uma NF-e de entrada com CFOP 1.202 (mesmo estado) ou 2.202 (outro estado).", "orientacao": null, "atalho": null },
-          { "passo": 4, "acao": "No campo destinatário, informe os dados do CPF do cliente.", "orientacao": null, "atalho": null },
-          { "passo": 5, "acao": "Referencie a chave de acesso de 44 dígitos da nota original (NF-e ou NFC-e) no campo NFref.", "orientacao": null, "atalho": null },
-          { "passo": 6, "acao": "Copie NCM, CST/CSOSN, alíquotas e valores da nota original — NÃO recalcule.", "orientacao": null, "atalho": null },
-          { "passo": 7, "acao": "Antes de emitir, valide com a contabilidade. Esta é uma orientação de prévia — quem fecha o caso fiscal é o contador.", "orientacao": null, "atalho": null }
+          { "passo": 1, "acao": "Confirme se a operação é dentro do estado ou interestadual.", "orientacao": "O CFOP muda conforme a UF do destino.", "atalho": null },
+          { "passo": 2, "acao": "A loja emite a NF-e de entrada — o consumidor PF não emite nota.", "orientacao": "Pessoa Física nunca emite nota fiscal; quem registra a operação é o estabelecimento.", "atalho": null },
+          { "passo": 3, "acao": "Use CFOP 1.202 (mesmo estado) ou 2.202 (outro estado).", "orientacao": null, "atalho": null },
+          { "passo": 4, "acao": "Preencha o CPF do cliente no campo destinatário da NF-e.", "orientacao": null, "atalho": null },
+          { "passo": 5, "acao": "Referencie a chave de 44 dígitos da nota original no campo NFref.", "orientacao": "A chave fica impressa no DANFE da NF-e ou NFC-e original.", "atalho": null },
+          { "passo": 6, "acao": "Copie NCM, CST/CSOSN, alíquotas e valores da nota original.", "orientacao": "Não recalcule nada — os dados fiscais devem ser idênticos aos da nota de venda.", "atalho": null },
+          { "passo": 7, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — quem fecha o caso fiscal é o contador.", "atalho": null }
         ]
       }
     },
     {
-      "title": "Devolução de mercadoria — Pessoa Jurídica SEM substituição tributária",
+      "title": "Emitir devolução de mercadoria para Pessoa Jurídica (sem ST)",
       "type": "instruction",
       "is_active": true,
       "keywords": [
         "devolucao pj", "devolucao empresa", "devolucao sem st",
-        "cfop 1202", "cfop 2202", "nota de devolucao"
+        "cfop 1202", "cfop 2202", "nota de devolucao pj"
       ],
       "content": {
         "type": "instruction",
         "steps": [
-          { "passo": 1, "acao": "Confirme se é operação dentro do estado (intra) ou interestadual (inter).", "orientacao": null, "atalho": null },
-          { "passo": 2, "acao": "Quem emite a nota é o comprador PJ devolvendo a mercadoria.", "orientacao": null, "atalho": null },
-          { "passo": 3, "acao": "Emita NF-e de saída com CFOP 1.202 (mesmo estado) ou 2.202 (outro estado).", "orientacao": null, "atalho": null },
-          { "passo": 4, "acao": "Replique NCM, CST/CSOSN, alíquotas e valores da nota original — não recalcule nada.", "orientacao": null, "atalho": null },
-          { "passo": 5, "acao": "CFOP invertido: se a nota original tinha 5.xxx, use 1.xxx. Se tinha 6.xxx, use 2.xxx.", "orientacao": null, "atalho": null },
-          { "passo": 6, "acao": "Referencie a chave de acesso de 44 dígitos da nota original no campo NFref.", "orientacao": null, "atalho": null },
-          { "passo": 7, "acao": "Antes de emitir, confirme com a contabilidade os valores de imposto a serem estornados. Esta é uma orientação de prévia.", "orientacao": null, "atalho": null }
+          { "passo": 1, "acao": "Confirme se a operação é dentro do estado ou interestadual.", "orientacao": null, "atalho": null },
+          { "passo": 2, "acao": "Quem emite a nota é o comprador PJ devolvendo a mercadoria.", "orientacao": "Diferente do caso PF, a empresa que comprou e devolve emite a nota de devolução.", "atalho": null },
+          { "passo": 3, "acao": "Use CFOP 1.202 (mesmo estado) ou 2.202 (outro estado).", "orientacao": null, "atalho": null },
+          { "passo": 4, "acao": "Inverta o CFOP da venda original.", "orientacao": "Se a nota original era 5.xxx use 1.xxx; se era 6.xxx use 2.xxx.", "atalho": null },
+          { "passo": 5, "acao": "Replique NCM, CST/CSOSN, alíquotas e valores da nota original.", "orientacao": "Não recalcule — os dados fiscais devem ser idênticos aos da nota de venda.", "atalho": null },
+          { "passo": 6, "acao": "Referencie a chave de 44 dígitos da nota original no campo NFref.", "orientacao": null, "atalho": null },
+          { "passo": 7, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — confirme com o contador os valores de imposto a estornar.", "atalho": null }
         ]
       }
     },
     {
-      "title": "Devolução de mercadoria — produto COM substituição tributária (ST)",
+      "title": "Emitir devolução de mercadoria com Substituição Tributária (ST)",
       "type": "instruction",
       "is_active": true,
       "keywords": [
         "devolucao st", "devolucao com substituicao tributaria",
         "cfop 1411", "cfop 2411", "cst 60", "csosn 500",
-        "recuperacao icms st", "ressarcimento st"
+        "recuperar icms st", "ressarcimento st"
       ],
       "content": {
         "type": "instruction",
         "steps": [
-          { "passo": 1, "acao": "Confirme se a operação é dentro do estado (intra) ou para outro estado (inter).", "orientacao": null, "atalho": null },
-          { "passo": 2, "acao": "Use CFOP 1.411 (mesmo estado) ou 2.411 (outro estado) — NÃO use 1.202 ou 2.202.", "orientacao": null, "atalho": null },
-          { "passo": 3, "acao": "CST/CSOSN: mantenha o mesmo da nota original (CST 60 para LP/LR ou CSOSN 500 para Simples Nacional).", "orientacao": null, "atalho": null },
-          { "passo": 4, "acao": "O ICMS-ST já foi recolhido pelo substituto tributário anteriormente.", "orientacao": null, "atalho": null },
-          { "passo": 5, "acao": "Para recuperar o ICMS-ST pago, oriente o cliente a consultar a SEFAZ do estado — cada UF tem um procedimento próprio.", "orientacao": null, "atalho": null },
-          { "passo": 6, "acao": "Referencie a chave de acesso de 44 dígitos da nota original no campo NFref.", "orientacao": null, "atalho": null },
-          { "passo": 7, "acao": "Antes de emitir, valide com a contabilidade. Esta é uma orientação de prévia — o contador é quem orienta o caso real.", "orientacao": null, "atalho": null }
+          { "passo": 1, "acao": "Confirme se a operação é dentro do estado ou interestadual.", "orientacao": null, "atalho": null },
+          { "passo": 2, "acao": "Use CFOP 1.411 (mesmo estado) ou 2.411 (outro estado).", "orientacao": "NÃO use 1.202 ou 2.202 — em devolução com ST o CFOP é específico.", "atalho": null },
+          { "passo": 3, "acao": "Mantenha o CST/CSOSN da nota original.", "orientacao": "CST 60 para Lucro Presumido/Real ou CSOSN 500 para Simples Nacional.", "atalho": null },
+          { "passo": 4, "acao": "Lembre que o ICMS-ST já foi recolhido pelo substituto tributário.", "orientacao": "O imposto já foi pago lá atrás, antes da venda chegar ao varejo.", "atalho": null },
+          { "passo": 5, "acao": "Para recuperar o ICMS-ST pago, oriente consultar a SEFAZ do estado.", "orientacao": "Cada UF tem um procedimento próprio para restituição.", "atalho": null },
+          { "passo": 6, "acao": "Referencie a chave de 44 dígitos da nota original no campo NFref.", "orientacao": null, "atalho": null },
+          { "passo": 7, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — quem fecha o caso fiscal é o contador.", "atalho": null }
         ]
       }
     },
     {
-      "title": "Remessa para conserto ou garantia",
+      "title": "Emitir remessa para conserto ou garantia",
       "type": "instruction",
       "is_active": true,
       "keywords": [
@@ -101,17 +97,17 @@
         "type": "instruction",
         "steps": [
           { "passo": 1, "acao": "Defina se a remessa é dentro do estado ou interestadual.", "orientacao": null, "atalho": null },
-          { "passo": 2, "acao": "Emita a NF-e de saída com CFOP 5.949 (mesmo estado) ou 6.949 (outro estado).", "orientacao": null, "atalho": null },
-          { "passo": 3, "acao": "CST/CSOSN: 00 (LP/LR) ou 102/500 (Simples Nacional), conforme regime.", "orientacao": null, "atalho": null },
+          { "passo": 2, "acao": "Emita NF-e de saída com CFOP 5.949 (mesmo estado) ou 6.949 (outro estado).", "orientacao": null, "atalho": null },
+          { "passo": 3, "acao": "Use CST 00 (LP/LR) ou CSOSN 102/500 (Simples Nacional).", "orientacao": "Conforme o regime tributário da empresa que emite.", "atalho": null },
           { "passo": 4, "acao": "No retorno, o destinatário emite NF-e com CFOP 1.949 (mesmo estado) ou 2.949 (outro estado).", "orientacao": null, "atalho": null },
-          { "passo": 5, "acao": "Não há transferência de propriedade — em regra, não incide ICMS como fato gerador normal.", "orientacao": null, "atalho": null },
-          { "passo": 6, "acao": "Inclua nas observações do XML: 'Remessa para conserto/garantia — retornará ao remetente'. Quando possível, informe o prazo.", "orientacao": null, "atalho": null },
-          { "passo": 7, "acao": "Alguns estados exigem destaque de ICMS mesmo em remessa — confirme com a contabilidade. Esta é uma orientação de prévia.", "orientacao": null, "atalho": null }
+          { "passo": 5, "acao": "Em regra, não há fato gerador de ICMS.", "orientacao": "Como não há transferência de propriedade, não incide ICMS pela lógica normal — mas alguns estados exigem destaque.", "atalho": null },
+          { "passo": 6, "acao": "Inclua nas observações do XML o motivo da remessa.", "orientacao": "Ex: 'Remessa para conserto/garantia — retornará ao remetente'. Quando possível, informe o prazo.", "atalho": null },
+          { "passo": 7, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — alguns estados exigem destaque de ICMS mesmo em remessa.", "atalho": null }
         ]
       }
     },
     {
-      "title": "Transferência entre filiais da mesma empresa",
+      "title": "Emitir transferência de mercadoria entre filiais da mesma empresa",
       "type": "instruction",
       "is_active": true,
       "keywords": [
@@ -121,37 +117,38 @@
       "content": {
         "type": "instruction",
         "steps": [
-          { "passo": 1, "acao": "Confirme se a transferência é dentro do estado ou para outra UF.", "orientacao": null, "atalho": null },
-          { "passo": 2, "acao": "Emite NF-e de saída com CFOP 5.152 (mesmo estado) ou 6.152 (outro estado).", "orientacao": null, "atalho": null },
-          { "passo": 3, "acao": "Emitente e destinatário devem ter o mesmo CNPJ raiz com Inscrições Estaduais diferentes.", "orientacao": null, "atalho": null },
-          { "passo": 4, "acao": "CST 00 (LP/LR) ou CSOSN 102 (Simples Nacional).", "orientacao": null, "atalho": null },
-          { "passo": 5, "acao": "Após a decisão do STF (ADC 49/2021), o destaque de ICMS na transferência deixou de ser obrigatório como regra geral.", "orientacao": null, "atalho": null },
-          { "passo": 6, "acao": "Mas alguns estados ainda exigem o destaque via convênio — confirme com a contabilidade. Esta é uma orientação de prévia.", "orientacao": null, "atalho": null }
+          { "passo": 1, "acao": "Confirme se é transferência dentro do estado ou interestadual.", "orientacao": null, "atalho": null },
+          { "passo": 2, "acao": "Emita NF-e de saída com CFOP 5.152 (mesmo estado) ou 6.152 (outro estado).", "orientacao": null, "atalho": null },
+          { "passo": 3, "acao": "Verifique se emitente e destinatário têm o mesmo CNPJ raiz.", "orientacao": "Inscrições Estaduais diferentes, mas raiz do CNPJ idêntica.", "atalho": null },
+          { "passo": 4, "acao": "Use CST 00 (LP/LR) ou CSOSN 102 (Simples Nacional).", "orientacao": null, "atalho": null },
+          { "passo": 5, "acao": "Considere a decisão do STF na ADC 49/2021.", "orientacao": "O destaque de ICMS na transferência deixou de ser obrigatório como regra geral.", "atalho": null },
+          { "passo": 6, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — alguns estados ainda exigem destaque por convênio.", "atalho": null }
         ]
       }
     },
     {
-      "title": "Venda de produto com Substituição Tributária já recolhida",
+      "title": "Emitir venda de produto com ST já recolhida",
       "type": "instruction",
       "is_active": true,
       "keywords": [
-        "venda st", "produto com st", "cfop 5405", "cfop 6404",
+        "venda com st", "produto com st", "cfop 5405", "cfop 6404",
         "cst 60", "csosn 500", "st ja paga", "bebida cosmetico cigarro limpeza"
       ],
       "content": {
         "type": "instruction",
         "steps": [
           { "passo": 1, "acao": "Confirme se a venda é dentro do estado ou interestadual.", "orientacao": null, "atalho": null },
-          { "passo": 2, "acao": "Emite NF-e de saída com CFOP 5.405 (mesmo estado) ou 6.404 (outro estado).", "orientacao": null, "atalho": null },
-          { "passo": 3, "acao": "CST 60 (LP/LR) ou CSOSN 500 (Simples Nacional).", "orientacao": null, "atalho": null },
-          { "passo": 4, "acao": "O ICMS-ST já foi pago pelo substituto (fabricante/importador) anteriormente — o varejista NÃO destaca ICMS na saída.", "orientacao": null, "atalho": null },
-          { "passo": 5, "acao": "Base de cálculo de ICMS-ST e valor do ST ficam zerados na nota.", "orientacao": null, "atalho": null },
-          { "passo": 6, "acao": "PIS/COFINS: verifique se o produto tem regime monofásico (combustíveis, bebidas frias, cosméticos, etc.). Confirme com a contabilidade. Esta é uma orientação de prévia.", "orientacao": null, "atalho": null }
+          { "passo": 2, "acao": "Use CFOP 5.405 (mesmo estado) ou 6.404 (outro estado).", "orientacao": null, "atalho": null },
+          { "passo": 3, "acao": "Use CST 60 (LP/LR) ou CSOSN 500 (Simples Nacional).", "orientacao": null, "atalho": null },
+          { "passo": 4, "acao": "Não destaque ICMS na saída.", "orientacao": "O imposto já foi recolhido pelo substituto (fabricante/importador); o varejista não destaca.", "atalho": null },
+          { "passo": 5, "acao": "Deixe Base de Cálculo de ICMS-ST e valor do ST zerados.", "orientacao": "Esses campos só são preenchidos quando o emitente é o substituto que está gerando o ST.", "atalho": null },
+          { "passo": 6, "acao": "Verifique se o produto tem PIS/COFINS no regime monofásico.", "orientacao": "Comum em combustíveis, bebidas frias, cosméticos e medicamentos.", "atalho": null },
+          { "passo": 7, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — quem fecha o caso fiscal é o contador.", "atalho": null }
         ]
       }
     },
     {
-      "title": "Venda como substituto tributário (quando você gera o ST)",
+      "title": "Emitir venda como substituto tributário (gerar o ST)",
       "type": "instruction",
       "is_active": true,
       "keywords": [
@@ -162,17 +159,17 @@
         "type": "instruction",
         "steps": [
           { "passo": 1, "acao": "Confirme se a venda é dentro do estado ou interestadual.", "orientacao": null, "atalho": null },
-          { "passo": 2, "acao": "Emite NF-e de saída com CFOP 5.401 (mesmo estado) ou 6.401 (outro estado).", "orientacao": null, "atalho": null },
-          { "passo": 3, "acao": "CST 10 (LP/LR) ou CSOSN 201/202 (Simples Nacional, com ST a recolher).", "orientacao": null, "atalho": null },
-          { "passo": 4, "acao": "Calcule a BC-ST: (Valor do produto + Frete + Outras despesas + IPI) × (1 + MVA%) do estado destino.", "orientacao": null, "atalho": null },
-          { "passo": 5, "acao": "ICMS-ST = (BC-ST × alíquota interna do destino) − ICMS próprio da operação.", "orientacao": null, "atalho": null },
-          { "passo": 6, "acao": "A MVA varia por NCM e por estado — consulte a tabela vigente da SEFAZ destino.", "orientacao": null, "atalho": null },
-          { "passo": 7, "acao": "Oriente o cliente a confirmar os valores de ST com a contabilidade antes de emitir. Esta é uma orientação de prévia.", "orientacao": null, "atalho": null }
+          { "passo": 2, "acao": "Use CFOP 5.401 (mesmo estado) ou 6.401 (outro estado).", "orientacao": null, "atalho": null },
+          { "passo": 3, "acao": "Use CST 10 (LP/LR) ou CSOSN 201/202 (Simples Nacional).", "orientacao": null, "atalho": null },
+          { "passo": 4, "acao": "Calcule a Base de Cálculo do ST.", "orientacao": "BC-ST = (Valor do produto + Frete + Outras despesas + IPI) × (1 + MVA% do estado destino).", "atalho": null },
+          { "passo": 5, "acao": "Calcule o ICMS-ST.", "orientacao": "ICMS-ST = (BC-ST × alíquota interna do destino) − ICMS próprio da operação.", "atalho": null },
+          { "passo": 6, "acao": "Consulte a MVA vigente para o NCM e estado destino.", "orientacao": "MVA varia por NCM e por UF; usar a tabela da SEFAZ do estado de destino.", "atalho": null },
+          { "passo": 7, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — confirme com o contador os valores de ST.", "atalho": null }
         ]
       }
     },
     {
-      "title": "Venda de produto isento ou não tributado",
+      "title": "Emitir venda de produto isento ou não tributado",
       "type": "instruction",
       "is_active": true,
       "keywords": [
@@ -183,17 +180,18 @@
         "type": "instruction",
         "steps": [
           { "passo": 1, "acao": "Confirme se a venda é dentro do estado ou interestadual.", "orientacao": null, "atalho": null },
-          { "passo": 2, "acao": "Emite NF-e com CFOP 5.102 (mesmo estado) ou 6.102 (outro estado).", "orientacao": null, "atalho": null },
-          { "passo": 3, "acao": "CST 40 (LP/LR) ou CSOSN 103 (Simples Nacional).", "orientacao": null, "atalho": null },
-          { "passo": 4, "acao": "ICMS: sem destaque (isento ou não incidente).", "orientacao": null, "atalho": null },
-          { "passo": 5, "acao": "Verifique se a isenção é prevista em convênio nacional ou lei estadual específica.", "orientacao": null, "atalho": null },
-          { "passo": 6, "acao": "PIS/COFINS: confirme se há alíquota zero ou isenção para o NCM em questão.", "orientacao": null, "atalho": null },
-          { "passo": 7, "acao": "Nas observações do XML, inclua o dispositivo legal que ampara a isenção. Confirme com a contabilidade. Esta é uma orientação de prévia.", "orientacao": null, "atalho": null }
+          { "passo": 2, "acao": "Use CFOP 5.102 (mesmo estado) ou 6.102 (outro estado).", "orientacao": null, "atalho": null },
+          { "passo": 3, "acao": "Use CST 40 (LP/LR) ou CSOSN 103 (Simples Nacional).", "orientacao": null, "atalho": null },
+          { "passo": 4, "acao": "Não destaque ICMS na nota.", "orientacao": "Isento ou não incidente conforme o caso.", "atalho": null },
+          { "passo": 5, "acao": "Confirme se a isenção é prevista em convênio nacional ou lei estadual.", "orientacao": null, "atalho": null },
+          { "passo": 6, "acao": "Verifique PIS/COFINS para o NCM.", "orientacao": "Confirme se há alíquota zero ou isenção específica para esse produto.", "atalho": null },
+          { "passo": 7, "acao": "Inclua o dispositivo legal da isenção nas observações do XML.", "orientacao": "Ex: convênio ICMS XX/XXX, lei estadual nº ... etc.", "atalho": null },
+          { "passo": 8, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — quem confirma o dispositivo legal é o contador.", "atalho": null }
         ]
       }
     },
     {
-      "title": "Venda padrão — produto tributado normalmente",
+      "title": "Emitir venda padrão (produto tributado normalmente)",
       "type": "instruction",
       "is_active": true,
       "keywords": [
@@ -204,17 +202,18 @@
         "type": "instruction",
         "steps": [
           { "passo": 1, "acao": "Confirme se a venda é dentro do estado ou interestadual.", "orientacao": null, "atalho": null },
-          { "passo": 2, "acao": "Emite NF-e com CFOP 5.102 (mesmo estado) ou 6.102 (outro estado).", "orientacao": null, "atalho": null },
-          { "passo": 3, "acao": "CST 00 (LP/LR) ou CSOSN 102 (Simples Nacional).", "orientacao": null, "atalho": null },
-          { "passo": 4, "acao": "Destaque o ICMS pela alíquota aplicável ao estado de destino.", "orientacao": null, "atalho": null },
-          { "passo": 5, "acao": "Simples Nacional: a alíquota é a efetiva do PGDAS — NÃO use a alíquota padrão do estado.", "orientacao": null, "atalho": null },
-          { "passo": 6, "acao": "PIS/COFINS: verifique o regime do produto (monofásico, cumulativo ou não cumulativo).", "orientacao": null, "atalho": null },
-          { "passo": 7, "acao": "Verifique se há redução de base de cálculo ou benefício fiscal previsto para o NCM no estado. Confirme com a contabilidade. Esta é uma orientação de prévia.", "orientacao": null, "atalho": null }
+          { "passo": 2, "acao": "Use CFOP 5.102 (mesmo estado) ou 6.102 (outro estado).", "orientacao": null, "atalho": null },
+          { "passo": 3, "acao": "Use CST 00 (LP/LR) ou CSOSN 102 (Simples Nacional).", "orientacao": null, "atalho": null },
+          { "passo": 4, "acao": "Destaque o ICMS pela alíquota aplicável ao destino.", "orientacao": null, "atalho": null },
+          { "passo": 5, "acao": "No Simples Nacional, use a alíquota efetiva do PGDAS.", "orientacao": "Não use a alíquota padrão do estado — a efetiva do PGDAS é diferente e varia mês a mês.", "atalho": null },
+          { "passo": 6, "acao": "Verifique PIS/COFINS conforme o regime do produto.", "orientacao": "Monofásico, cumulativo ou não cumulativo conforme NCM.", "atalho": null },
+          { "passo": 7, "acao": "Confira se há redução de base de cálculo ou benefício fiscal.", "orientacao": "Alguns NCMs têm benefícios estaduais específicos.", "atalho": null },
+          { "passo": 8, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — quem fecha o caso fiscal é o contador.", "atalho": null }
         ]
       }
     },
     {
-      "title": "Venda interestadual para consumidor final PF (DIFAL)",
+      "title": "Emitir venda interestadual para consumidor final PF (com DIFAL)",
       "type": "instruction",
       "is_active": true,
       "keywords": [
@@ -224,86 +223,96 @@
       "content": {
         "type": "instruction",
         "steps": [
-          { "passo": 1, "acao": "Identifique: venda para outro estado, destinatário consumidor final Pessoa Física.", "orientacao": null, "atalho": null },
-          { "passo": 2, "acao": "CFOP 6.102, CST 00 (LP/LR) ou CSOSN 102 (Simples Nacional).", "orientacao": null, "atalho": null },
-          { "passo": 3, "acao": "Atenção ao DIFAL — Diferencial de Alíquota — devido ao estado de destino.", "orientacao": null, "atalho": null },
-          { "passo": 4, "acao": "Fórmula: DIFAL = (alíquota interna do estado destino − alíquota interestadual) × base de cálculo.", "orientacao": null, "atalho": null },
-          { "passo": 5, "acao": "Alíquota interestadual: 7% se destino é Norte/Nordeste/Centro-Oeste; 12% se Sul/Sudeste.", "orientacao": null, "atalho": null },
-          { "passo": 6, "acao": "Simples Nacional: pela Resolução CGSN 140/2018 também recolhe DIFAL, mas alguns estados não exigem — verifique convênio vigente no destino.", "orientacao": null, "atalho": null },
-          { "passo": 7, "acao": "Preencha corretamente os campos de DIFAL na NF-e. Confirme com a contabilidade. Esta é uma orientação de prévia.", "orientacao": null, "atalho": null }
+          { "passo": 1, "acao": "Confirme que a venda é interestadual e o destinatário é consumidor final Pessoa Física.", "orientacao": null, "atalho": null },
+          { "passo": 2, "acao": "Use CFOP 6.102.", "orientacao": null, "atalho": null },
+          { "passo": 3, "acao": "Use CST 00 (LP/LR) ou CSOSN 102 (Simples Nacional).", "orientacao": null, "atalho": null },
+          { "passo": 4, "acao": "Identifique a alíquota interestadual aplicável.", "orientacao": "7% para destino Norte, Nordeste ou Centro-Oeste; 12% para destino Sul ou Sudeste.", "atalho": null },
+          { "passo": 5, "acao": "Calcule o DIFAL.", "orientacao": "DIFAL = (alíquota interna do estado destino − alíquota interestadual) × base de cálculo.", "atalho": null },
+          { "passo": 6, "acao": "No Simples Nacional, verifique se o estado de destino exige DIFAL.", "orientacao": "A Resolução CGSN 140/2018 prevê o recolhimento, mas alguns estados não cobram. Verifique convênio vigente.", "atalho": null },
+          { "passo": 7, "acao": "Preencha os campos de DIFAL na NF-e quando aplicável.", "orientacao": null, "atalho": null },
+          { "passo": 8, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — o cálculo do DIFAL tem alta complexidade e o contador confirma os valores.", "atalho": null }
         ]
       }
     },
     {
-      "title": "Cancelamento de NF-e após 24 horas",
-      "type": "error",
+      "title": "Orientar cancelamento de NF-e (dentro ou fora do prazo de 24h)",
+      "type": "instruction",
       "is_active": true,
       "keywords": [
-        "cancelar nfe", "cancelamento apos 24h", "prazo cancelamento",
-        "sefaz rejeitou cancelamento", "como cancelar nota"
+        "cancelar nfe", "cancelamento 24h", "prazo cancelamento nota",
+        "sefaz rejeitou cancelamento", "como cancelar nota fora do prazo"
       ],
       "content": {
-        "type": "error",
-        "error_code": null,
-        "description": "Cliente tenta cancelar uma NF-e após o prazo de 24 horas da autorização e a SEFAZ rejeita.",
-        "cause": "A SEFAZ permite cancelamento de NF-e apenas dentro de 24 horas após a autorização. Após esse prazo, o pedido é rejeitado.",
-        "solution": "Se ainda estiver dentro de 24 horas: no sistema, acesse a NF-e, escolha a opção Cancelar e informe uma justificativa com pelo menos 15 caracteres. Se já passou de 24 horas, NÃO há mais cancelamento — a única opção é emitir uma NF-e de devolução (entrada) com o CFOP correto referenciando a nota original (1.202/2.202 para devolução padrão; 1.411/2.411 quando havia ST). Use o módulo de devolução para orientar o CFOP correto. Antes de emitir, valide com a contabilidade. Esta é uma orientação de prévia.",
-        "orientation": null
+        "type": "instruction",
+        "steps": [
+          { "passo": 1, "acao": "Verifique há quanto tempo a NF-e foi autorizada pela SEFAZ.", "orientacao": "A SEFAZ permite cancelamento apenas em até 24 horas após a autorização.", "atalho": null },
+          { "passo": 2, "acao": "Se estiver dentro de 24h, oriente o cancelamento no sistema.", "orientacao": "Acesse a NF-e, escolha a opção Cancelar e informe uma justificativa com pelo menos 15 caracteres.", "atalho": null },
+          { "passo": 3, "acao": "Se já passou de 24h, NÃO tente cancelar.", "orientacao": "A SEFAZ rejeita o pedido. Não oriente o cliente a tentar.", "atalho": null },
+          { "passo": 4, "acao": "Após 24h, oriente emissão de NF-e de devolução (entrada).", "orientacao": "Use o CFOP correto (1.202/2.202 sem ST; 1.411/2.411 com ST) referenciando a nota original no NFref.", "atalho": null },
+          { "passo": 5, "acao": "Antes de emitir a devolução, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — quem fecha o caso fiscal é o contador.", "atalho": null }
+        ]
       }
     },
     {
-      "title": "Diferença entre CFOP 1.202 e CFOP 5.202",
-      "type": "error",
+      "title": "Identificar o CFOP correto entre 1.202 (entrada) e 5.202 (saída)",
+      "type": "instruction",
       "is_active": true,
       "keywords": [
-        "diferenca 1202 5202", "cfop entrada saida devolucao",
-        "qual cfop usar devolucao", "1202 ou 5202"
+        "diferenca 1202 5202", "qual cfop usar devolucao",
+        "cfop entrada saida devolucao", "1202 ou 5202"
       ],
       "content": {
-        "type": "error",
-        "error_code": null,
-        "description": "Cliente em dúvida sobre quando usar CFOP 1.202 e quando usar CFOP 5.202.",
-        "cause": "Confusão entre devolução recebida (entrada) e devolução feita ao fornecedor (saída).",
-        "solution": "Regra mnemônica: 1 = entrada de mercadoria; 5 = saída de mercadoria. CFOP 1.202: a loja está RECEBENDO de volta uma mercadoria que vendeu. Quem emite é o cliente PJ que está devolvendo; para o sistema da loja, é entrada. CFOP 5.202: a loja está DEVOLVENDO ao fornecedor uma mercadoria que comprou; quem emite é a própria loja; é saída de mercadoria. Pergunta-chave: quem está emitindo e para onde vai a mercadoria? Valide com a contabilidade. Esta é uma orientação de prévia.",
-        "orientation": null
+        "type": "instruction",
+        "steps": [
+          { "passo": 1, "acao": "Lembre da regra mnemônica: 1 = entrada, 5 = saída.", "orientacao": "Primeiro dígito do CFOP indica o sentido da mercadoria pra empresa que emite.", "atalho": null },
+          { "passo": 2, "acao": "Pergunte: quem está emitindo a nota e pra onde a mercadoria está indo?", "orientacao": null, "atalho": null },
+          { "passo": 3, "acao": "Use 1.202 quando a loja RECEBE de volta uma mercadoria que vendeu.", "orientacao": "Quem emite é o cliente PJ que está devolvendo; pra loja é entrada.", "atalho": null },
+          { "passo": 4, "acao": "Use 5.202 quando a loja DEVOLVE ao fornecedor uma mercadoria que comprou.", "orientacao": "Quem emite é a própria loja; é saída de mercadoria da empresa.", "atalho": null },
+          { "passo": 5, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — quem fecha o caso fiscal é o contador.", "atalho": null }
+        ]
       }
     },
     {
-      "title": "Diferença entre CSOSN 102 e CSOSN 500",
-      "type": "error",
+      "title": "Identificar o CSOSN correto entre 102 e 500 (Simples Nacional)",
+      "type": "instruction",
       "is_active": true,
       "keywords": [
-        "csosn 102", "csosn 500", "diferenca csosn", "simples nacional codigos",
-        "qual csosn usar", "csosn produto com st"
+        "csosn 102", "csosn 500", "diferenca csosn",
+        "qual csosn usar", "simples nacional codigos", "csosn produto com st"
       ],
       "content": {
-        "type": "error",
-        "error_code": null,
-        "description": "Cliente do Simples Nacional em dúvida sobre qual CSOSN usar em produtos com ou sem Substituição Tributária.",
-        "cause": "Confusão entre operação tributada normal pelo Simples e operação com ICMS-ST já recolhido anteriormente.",
-        "solution": "CSOSN 102 — tributada pelo Simples Nacional, sem permissão de crédito ao destinatário. Use para produtos SEM ST; o ICMS está incluído no DAS. O comprador PJ não pode aproveitar crédito desta nota. CSOSN 500 — ICMS cobrado anteriormente por substituição ou antecipação. Use para produtos COM ST já paga (fabricante/distribuidor já recolheu). Varejistas do Simples Nacional revendendo bebidas, cosméticos, limpeza, cigarros etc. costumam usar CSOSN 500 — não destaca ICMS na nota. Regra rápida: produto veio na nota de compra com CSOSN 500 ou CST 60? Vende com 500. Se não tinha ST, usa 102. Confirme com a contabilidade. Esta é uma orientação de prévia.",
-        "orientation": null
+        "type": "instruction",
+        "steps": [
+          { "passo": 1, "acao": "Pergunte: o produto tem ST já recolhida?", "orientacao": "Olhe na nota de compra: se veio com CSOSN 500 ou CST 60, é produto com ST.", "atalho": null },
+          { "passo": 2, "acao": "Se SEM ST, use CSOSN 102.", "orientacao": "Tributada pelo Simples Nacional, sem permissão de crédito ao destinatário. O ICMS está incluído no DAS.", "atalho": null },
+          { "passo": 3, "acao": "Se COM ST já paga, use CSOSN 500.", "orientacao": "Comum no varejo de bebidas, cosméticos, limpeza, cigarros etc. — não destaca ICMS na nota.", "atalho": null },
+          { "passo": 4, "acao": "Lembre a regra rápida: veio com 500/60 na compra, vende com 500.", "orientacao": "Se não tinha ST na compra, vende com 102.", "atalho": null },
+          { "passo": 5, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — quem fecha o caso fiscal é o contador.", "atalho": null }
+        ]
       }
     },
     {
-      "title": "DIFAL — Diferencial de Alíquota (entendimento geral)",
-      "type": "error",
+      "title": "Calcular o DIFAL em vendas interestaduais",
+      "type": "instruction",
       "is_active": true,
       "keywords": [
-        "o que e difal", "diferencial aliquota explicacao",
-        "como calcular difal", "difal simples nacional"
+        "calcular difal", "diferencial aliquota explicacao",
+        "como calcular difal", "difal simples nacional", "o que e difal"
       ],
       "content": {
-        "type": "error",
-        "error_code": null,
-        "description": "Dúvida geral sobre o que é DIFAL, quando incide e como calcular.",
-        "cause": "Vendas interestaduais para consumidor final (PJ não contribuinte ou PF) geram a obrigação de recolher a diferença entre a alíquota interna do destino e a interestadual — esse valor é o DIFAL.",
-        "solution": "DIFAL = (alíquota interna do estado destino − alíquota interestadual) × base de cálculo. Alíquota interestadual: 7% (destino Norte/Nordeste/Centro-Oeste) ou 12% (Sul/Sudeste). Simples Nacional: a Resolução CGSN 140/2018 prevê o recolhimento do DIFAL pelo SN, mas alguns estados não cobram — verifique se o estado de destino tem convênio vigente. A NF-e precisa ter os campos de DIFAL preenchidos quando aplicável. É um tema de alta complexidade — sempre confirme com a contabilidade o cálculo correto. Esta é uma orientação de prévia.",
-        "orientation": null
+        "type": "instruction",
+        "steps": [
+          { "passo": 1, "acao": "Identifique se é venda interestadual para consumidor final.", "orientacao": "DIFAL incide quando o destinatário é PJ não contribuinte ou PF em outro estado.", "atalho": null },
+          { "passo": 2, "acao": "Identifique a alíquota interestadual aplicável.", "orientacao": "7% se destino é Norte, Nordeste ou Centro-Oeste; 12% se Sul ou Sudeste.", "atalho": null },
+          { "passo": 3, "acao": "Aplique a fórmula do DIFAL.", "orientacao": "DIFAL = (alíquota interna do estado destino − alíquota interestadual) × base de cálculo.", "atalho": null },
+          { "passo": 4, "acao": "Para Simples Nacional, verifique se o estado exige DIFAL.", "orientacao": "A Resolução CGSN 140/2018 prevê o recolhimento, mas nem todos os estados cobram do SN.", "atalho": null },
+          { "passo": 5, "acao": "Preencha os campos de DIFAL na NF-e.", "orientacao": "Quando aplicável, a nota precisa carregar os valores corretos pra SEFAZ aceitar.", "atalho": null },
+          { "passo": 6, "acao": "Antes de emitir, valide com a contabilidade.", "orientacao": "Estas são orientações apenas de prévia — DIFAL tem alta complexidade e o contador confirma os valores.", "atalho": null }
+        ]
       }
     },
     {
-      "title": "Checklist de atendimento fiscal",
+      "title": "Aplicar checklist completo de atendimento fiscal",
       "type": "instruction",
       "is_active": true,
       "keywords": [
@@ -313,23 +322,22 @@
       "content": {
         "type": "instruction",
         "steps": [
-          { "passo": 1, "acao": "IDENTIFICAÇÃO: confirme o regime tributário do cliente (Simples Nacional / Lucro Presumido / Lucro Real / MEI).", "orientacao": null, "atalho": null },
-          { "passo": 2, "acao": "IDENTIFICAÇÃO: confirme se a operação é dentro do estado ou interestadual.", "orientacao": null, "atalho": null },
-          { "passo": 3, "acao": "IDENTIFICAÇÃO: verifique se o produto tem Substituição Tributária (ST).", "orientacao": null, "atalho": null },
-          { "passo": 4, "acao": "IDENTIFICAÇÃO: identifique o destinatário (PJ contribuinte, PJ não contribuinte, consumidor final PF).", "orientacao": null, "atalho": null },
-          { "passo": 5, "acao": "DADOS FISCAIS: oriente o CFOP correto com base no cenário.", "orientacao": null, "atalho": null },
-          { "passo": 6, "acao": "DADOS FISCAIS: oriente o CST/CSOSN apropriado.", "orientacao": null, "atalho": null },
-          { "passo": 7, "acao": "DADOS FISCAIS: informe alíquota de ICMS de referência com a ressalva de validação.", "orientacao": null, "atalho": null },
-          { "passo": 8, "acao": "DADOS FISCAIS: verifique PIS/COFINS (monofásico, isento, normal).", "orientacao": null, "atalho": null },
-          { "passo": 9, "acao": "DADOS FISCAIS: alerte sobre IPI se aplicável (prazo de 15 dias para devolução).", "orientacao": null, "atalho": null },
-          { "passo": 10, "acao": "DEVOLUÇÃO (se aplicável): confirme que o cliente tem a chave de acesso da NF original (44 dígitos).", "orientacao": null, "atalho": null },
-          { "passo": 11, "acao": "DEVOLUÇÃO (se aplicável): verifique se o CFOP foi invertido corretamente (5→1 ou 6→2).", "orientacao": null, "atalho": null },
-          { "passo": 12, "acao": "DEVOLUÇÃO (se aplicável): reforce que dados fiscais devem ser replicados da nota original.", "orientacao": null, "atalho": null },
-          { "passo": 13, "acao": "DEVOLUÇÃO (se aplicável): verifique se é cancelamento (24h) ou devolução (após 24h).", "orientacao": null, "atalho": null },
-          { "passo": 14, "acao": "ENCERRAMENTO: informe ao cliente que ele DEVE validar com a contabilidade antes de emitir.", "orientacao": null, "atalho": null },
-          { "passo": 15, "acao": "ENCERRAMENTO: use o tom de prévia — NÃO afirme que algo está 100% certo do ponto de vista fiscal.", "orientacao": null, "atalho": null },
-          { "passo": 16, "acao": "ENCERRAMENTO: registre o atendimento com as orientações dadas.", "orientacao": null, "atalho": null },
-          { "passo": 17, "acao": "ENCERRAMENTO: anote dúvidas recorrentes para incluir no FAQ interno.", "orientacao": null, "atalho": null }
+          { "passo": 1, "acao": "Identifique o regime tributário do cliente.", "orientacao": "Simples Nacional, Lucro Presumido, Lucro Real ou MEI — muda CFOP, CST/CSOSN e cálculo.", "atalho": null },
+          { "passo": 2, "acao": "Confirme se a operação é dentro do estado ou interestadual.", "orientacao": null, "atalho": null },
+          { "passo": 3, "acao": "Verifique se o produto tem Substituição Tributária (ST).", "orientacao": null, "atalho": null },
+          { "passo": 4, "acao": "Identifique o destinatário.", "orientacao": "PJ contribuinte, PJ não contribuinte ou consumidor final PF.", "atalho": null },
+          { "passo": 5, "acao": "Oriente o CFOP correto para o cenário.", "orientacao": null, "atalho": null },
+          { "passo": 6, "acao": "Oriente o CST ou CSOSN apropriado.", "orientacao": null, "atalho": null },
+          { "passo": 7, "acao": "Informe a alíquota de ICMS de referência.", "orientacao": "Sempre com a ressalva de validar com a contabilidade.", "atalho": null },
+          { "passo": 8, "acao": "Verifique PIS/COFINS.", "orientacao": "Monofásico, isento ou normal conforme o NCM.", "atalho": null },
+          { "passo": 9, "acao": "Alerte sobre IPI se aplicável.", "orientacao": "Prazo de 15 dias para devolução com aproveitamento de IPI.", "atalho": null },
+          { "passo": 10, "acao": "Em devolução, confirme se o cliente tem a chave de 44 dígitos da nota original.", "orientacao": null, "atalho": null },
+          { "passo": 11, "acao": "Em devolução, confira a inversão do CFOP.", "orientacao": "5→1 ou 6→2.", "atalho": null },
+          { "passo": 12, "acao": "Em devolução, reforce que dados fiscais devem ser replicados da nota original.", "orientacao": null, "atalho": null },
+          { "passo": 13, "acao": "Confirme se é caso de cancelamento (24h) ou devolução (após 24h).", "orientacao": null, "atalho": null },
+          { "passo": 14, "acao": "Informe ao cliente que ele deve validar com a contabilidade antes de emitir.", "orientacao": "Use o tom de prévia — não afirme que algo está 100% certo do ponto de vista fiscal.", "atalho": null },
+          { "passo": 15, "acao": "Registre o atendimento com as orientações dadas.", "orientacao": "Importante pra auditoria interna e melhoria do FAQ.", "atalho": null },
+          { "passo": 16, "acao": "Anote dúvidas recorrentes para incluir no FAQ interno.", "orientacao": null, "atalho": null }
         ]
       }
     }
@@ -338,7 +346,7 @@
 
 
   if (!FISCAL_MODULE) {
-    console.error('[install-fiscal] Variável FISCAL_MODULE vazia. Cole o JSON do arquivo fiscal-module.json no lugar de /*FISCAL_MODULE_JSON_HERE*/.')
+    console.error('[install-fiscal] Variável FISCAL_MODULE vazia.')
     return
   }
 

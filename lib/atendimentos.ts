@@ -39,6 +39,51 @@ export function formatCusto(v: number | string | null | undefined): string {
   }
 }
 
+export type TranscricaoMessage = {
+  speaker: string
+  isClient: boolean
+  text: string
+}
+
+// Parseia transcrições no formato "Speaker: texto\nSpeaker: texto" em uma
+// lista de mensagens. Qualquer speaker diferente de "Cliente" é tratado
+// como atendente, então a função fica imune a troca de nome do agente
+// (Beto, Claudio, etc.) sem mudança de código. Linhas sem prefixo
+// "Speaker:" são tratadas como continuação da mensagem anterior — útil
+// quando o atendente manda um passo a passo com várias linhas.
+export function parseTranscricao(
+  raw: string | null | undefined
+): TranscricaoMessage[] {
+  if (!raw) return []
+  const lines = String(raw).split(/\r?\n/)
+  const out: TranscricaoMessage[] = []
+  let current: TranscricaoMessage | null = null
+
+  // Speaker = uma palavra (sem espaço) com letras possivelmente acentuadas.
+  // Restringir a uma palavra evita falsos positivos quando o cliente
+  // escreve algo como "lendo agora: ...".
+  const re = /^([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ.'-]*):\s?(.*)$/
+
+  for (const line of lines) {
+    const m = re.exec(line)
+    if (m) {
+      if (current) out.push(current)
+      const speaker = m[1].trim()
+      current = {
+        speaker,
+        isClient: speaker.toLowerCase() === 'cliente',
+        text: m[2] ?? '',
+      }
+    } else if (current) {
+      current.text += (current.text ? '\n' : '') + line
+    } else if (line.trim()) {
+      current = { speaker: '', isClient: false, text: line }
+    }
+  }
+  if (current) out.push(current)
+  return out
+}
+
 // Classifica o sentimento para cores no UI. Tolera variações de texto (pt/en).
 export function sentimentoBadge(
   sentimento: string | null | undefined

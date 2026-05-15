@@ -10,16 +10,14 @@ import {
   Headphones,
   CheckCircle2,
   ArrowRightLeft,
-  XCircle,
   Filter,
-  DollarSign,
-  PhoneCall,
+  Percent,
+  RefreshCw,
   Sparkles,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
-import { formatCusto } from '@/lib/atendimentos'
 
 const PAGE_SIZE = 30
 
@@ -29,7 +27,6 @@ type StatsResponse = {
   resolvida_ia: number
   transferida: number
   interrompida: number
-  custoTotal: number
 }
 
 const STATS_EMPTY: StatsResponse = {
@@ -38,7 +35,6 @@ const STATS_EMPTY: StatsResponse = {
   resolvida_ia: 0,
   transferida: 0,
   interrompida: 0,
-  custoTotal: 0,
 }
 
 type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 'interrompida'
@@ -99,6 +95,10 @@ export default function AtendimentosPage() {
   // Stats globais (todos os atendimentos respeitando filtros, sem paginação)
   const [stats, setStats] = useState<StatsResponse>(STATS_EMPTY)
 
+  // Estado do botão "Atualizar" — só pra animar o ícone, não substitui
+  // o spinner global (load silencioso evita "flash" da tabela).
+  const [refreshing, setRefreshing] = useState(false)
+
   // Debounce da busca (evita request a cada tecla)
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim()), 350)
@@ -151,8 +151,10 @@ export default function AtendimentosPage() {
     ]
   )
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // `silent` evita acender o spinner que esconde a tabela — usado pelo
+  // botão "Atualizar" pra não piscar o conteúdo entre fetches rápidos.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const params = buildQueryParams(true)
       const res = await fetch(`/api/atendimentos?${params.toString()}`)
@@ -173,9 +175,21 @@ export default function AtendimentosPage() {
       setTotalPages(1)
       setTotalFiltered(0)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [buildQueryParams])
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([load(true), loadStats()])
+    } finally {
+      setRefreshing(false)
+    }
+  // loadStats só é definida abaixo, mas ambas são useCallback estáveis —
+  // o lint pega isso no segundo render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load])
 
   const loadStats = useCallback(async () => {
     try {
@@ -189,7 +203,6 @@ export default function AtendimentosPage() {
           resolvida_ia: Number(data.resolvida_ia) || 0,
           transferida: Number(data.transferida) || 0,
           interrompida: Number(data.interrompida) || 0,
-          custoTotal: Number(data.custoTotal) || 0,
         })
       }
     } catch {
@@ -243,25 +256,31 @@ export default function AtendimentosPage() {
         <div>
           <h1 className="text-3xl font-display font-bold text-primary">Atendimentos</h1>
         </div>
-        <Link
-          href="/atendimentos/gestor-prompt"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500/20 transition-colors text-sm font-medium"
-        >
-          <Sparkles size={14} />
-          Gestor de Prompt
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={refreshing}
+            title="Atualizar lista e indicadores"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-glass border border-glass-border text-secondary hover:text-primary hover:border-orange-500/40 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+            Atualizar
+          </button>
+          <Link
+            href="/atendimentos/gestor-prompt"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500/20 transition-colors text-sm font-medium"
+          >
+            <Sparkles size={14} />
+            Gestor de Prompt
+          </Link>
+        </div>
       </div>
 
       {/* Stats — números globais respeitando os filtros atuais (todas as
           páginas, não só a atual). Vêm do endpoint /atendimentos/stats. */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard icon={<Headphones size={18} />} label="Total" value={String(stats.total)} />
-        <StatCard
-          icon={<PhoneCall size={18} />}
-          label="Em atendimento"
-          value={String(stats.em_atendimento)}
-          accent="blue"
-        />
         <StatCard
           icon={<CheckCircle2 size={18} />}
           label="Resolvidas IA"
@@ -275,15 +294,14 @@ export default function AtendimentosPage() {
           accent="yellow"
         />
         <StatCard
-          icon={<XCircle size={18} />}
-          label="Interrompidas"
-          value={String(stats.interrompida)}
-          accent="red"
-        />
-        <StatCard
-          icon={<DollarSign size={18} />}
-          label="Custo total"
-          value={formatCusto(stats.custoTotal)}
+          icon={<Percent size={18} />}
+          label="% Resolvidos"
+          value={
+            stats.total > 0
+              ? `${Math.round((stats.resolvida_ia / stats.total) * 100)}%`
+              : '—'
+          }
+          accent="green"
         />
       </div>
 
@@ -295,12 +313,12 @@ export default function AtendimentosPage() {
         </div>
 
         {/* Filtros: fundo preto + texto/números em laranja. As <option>
-            também recebem bg-black text-orange-400 pra que o dropdown
+            também recebem bg-base text-orange-400 pra que o dropdown
             nativo do navegador siga o mesmo padrão visual. */}
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          className="bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-black [&>option]:text-orange-400"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
         >
           <option value="all">Todos status</option>
           <option value="em_atendimento">Em atendimento</option>
@@ -312,7 +330,7 @@ export default function AtendimentosPage() {
         <select
           value={destinoFilter}
           onChange={(e) => setDestinoFilter(e.target.value as DestinoFilter)}
-          className="bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-black [&>option]:text-orange-400"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
         >
           <option value="all">Todos destinos</option>
           <option value="servicedesk">ServiceDesk</option>
@@ -323,7 +341,7 @@ export default function AtendimentosPage() {
           value={tipoContatoFilter}
           onChange={(e) => setTipoContatoFilter(e.target.value as TipoContatoFilter)}
           title="Tipo de contato"
-          className="bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-black [&>option]:text-orange-400"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
         >
           <option value="all">Todos tipos</option>
           <option value="ligacao">Ligação</option>
@@ -333,7 +351,7 @@ export default function AtendimentosPage() {
         <select
           value={sentimentoFilter}
           onChange={(e) => setSentimentoFilter(e.target.value as SentimentoFilter)}
-          className="bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-black [&>option]:text-orange-400"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
         >
           <option value="all">Todos sentimentos</option>
           <option value="positivo">Positivo</option>
@@ -345,7 +363,7 @@ export default function AtendimentosPage() {
           type="date"
           value={dayFilter}
           onChange={(e) => setDayFilter(e.target.value)}
-          className="bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark]"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark]"
         />
 
         <select
@@ -353,7 +371,7 @@ export default function AtendimentosPage() {
           onChange={(e) => setHourFilter(e.target.value)}
           disabled={!dayFilter}
           title={!dayFilter ? 'Escolha um dia primeiro' : 'Faixa de hora'}
-          className="bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-40 disabled:cursor-not-allowed [color-scheme:dark] [&>option]:bg-black [&>option]:text-orange-400"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-40 disabled:cursor-not-allowed [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
         >
           <option value="all">Dia todo</option>
           {Array.from({ length: 24 }).map((_, h) => {
@@ -395,7 +413,7 @@ export default function AtendimentosPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar empresa, CNPJ, telefone, ID da ligação..."
-          className="flex-1 min-w-[200px] bg-black border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 placeholder:text-orange-400/40"
+          className="flex-1 min-w-[200px] bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 placeholder:text-orange-400/40"
         />
       </div>
 

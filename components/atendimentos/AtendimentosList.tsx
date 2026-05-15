@@ -1,12 +1,23 @@
 'use client'
 
-import { Building2, Calendar, Clock, MessageCircle, Phone, PhoneCall } from 'lucide-react'
+import { Building2, Calendar, MessageCircle, Phone, PhoneCall, Star } from 'lucide-react'
 import type { AtendimentoRecord } from '@/lib/types'
-import { formatCusto, formatDuracao, sentimentoBadge } from '@/lib/atendimentos'
 
 interface Props {
   records: AtendimentoRecord[]
   onSelect: (record: AtendimentoRecord) => void
+}
+
+// Janela em milissegundos para considerar um atendimento "novo" — usada
+// pelo selo de estrela na coluna Data. Avaliada no render, então clicar
+// em "Atualizar" reavalia todas as linhas com base no momento atual.
+const NOVO_WINDOW_MS = 5 * 60 * 1000
+
+function isNovo(iso: string | null): boolean {
+  if (!iso) return false
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return false
+  return Date.now() - t < NOVO_WINDOW_MS
 }
 
 function formatDate(iso: string | null): string {
@@ -88,10 +99,6 @@ export function AtendimentosList({ records, onSelect }: Props) {
               <th className="px-4 py-3 font-medium">Destino</th>
               <th className="px-4 py-3 font-medium">Empresa</th>
               <th className="px-4 py-3 font-medium">Telefone</th>
-              <th className="px-4 py-3 font-medium">Duração</th>
-              <th className="px-4 py-3 font-medium">Custo</th>
-              <th className="px-4 py-3 font-medium">Sentimento</th>
-              <th className="px-4 py-3 font-medium">Problema</th>
             </tr>
           </thead>
           <tbody>
@@ -99,10 +106,7 @@ export function AtendimentosList({ records, onSelect }: Props) {
               const st = statusBadge(r.status)
               const dest = destinoBadge(r.destino)
               const tipo = tipoContatoBadge(r.tipo_contato ?? null)
-              const problema =
-                r.problema_extraido?.problema?.descricao_tecnica ||
-                r.problema_relatado ||
-                '—'
+              const novo = isNovo(r.data_hora_chegada || r.criado_em)
 
               return (
                 <tr
@@ -114,12 +118,20 @@ export function AtendimentosList({ records, onSelect }: Props) {
                     <div className="flex items-center gap-1.5">
                       <Calendar size={12} className="text-muted" />
                       {formatDate(r.data_hora_chegada || r.criado_em)}
+                      {novo && (
+                        <span title="Novo" aria-label="Novo" className="inline-flex">
+                          <Star
+                            size={14}
+                            className="text-yellow-400 fill-yellow-400 ml-1 animate-pulse"
+                          />
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3">
                     {tipo ? (
                       <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${tipo.cls}`}
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border whitespace-nowrap ${tipo.cls}`}
                       >
                         {tipo.icon === 'phone' ? <PhoneCall size={11} /> : <MessageCircle size={11} />}
                         {tipo.label}
@@ -130,7 +142,7 @@ export function AtendimentosList({ records, onSelect }: Props) {
                   </td>
                   <td className="px-4 py-3">
                     <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${st.cls}`}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border whitespace-nowrap ${st.cls}`}
                     >
                       {st.label}
                     </span>
@@ -138,7 +150,7 @@ export function AtendimentosList({ records, onSelect }: Props) {
                   <td className="px-4 py-3">
                     {dest ? (
                       <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${dest.cls}`}
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border whitespace-nowrap ${dest.cls}`}
                       >
                         {dest.label}
                       </span>
@@ -160,34 +172,6 @@ export function AtendimentosList({ records, onSelect }: Props) {
                       <Phone size={12} className="text-muted" />
                       {r.phone || '—'}
                     </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-secondary">
-                    <div className="flex items-center gap-1.5">
-                      <Clock size={12} className="text-muted" />
-                      {formatDuracao(r.duracao_segundos)}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-primary whitespace-nowrap">
-                    {formatCusto(r.custo_real)}
-                  </td>
-                  <td className="px-4 py-3">
-                    {(() => {
-                      const b = sentimentoBadge(r.sentimento_cliente)
-                      return b ? (
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${b.cls}`}
-                        >
-                          {b.label}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted">—</span>
-                      )
-                    })()}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-secondary max-w-[320px]">
-                    <p className="truncate" title={problema}>
-                      {problema}
-                    </p>
                   </td>
                 </tr>
               )

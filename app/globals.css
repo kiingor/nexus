@@ -4,12 +4,12 @@
   --orange-500: #FF6B00;
   --orange-400: #FF8533;
   --orange-300: #FF9A3C;
-  --surface-glass: rgba(255, 255, 255, 0.04);
-  --surface-glass-hover: rgba(255, 255, 255, 0.07);
-  --border-glass: rgba(255, 255, 255, 0.08);
+  --surface-glass: #1A2B32;
+  --surface-glass-hover: #213842;
+  --border-glass: rgba(255, 255, 255, 0.06);
   --border-orange: rgba(255, 107, 0, 0.3);
-  --bg-base: #0A0A0B;
-  --bg-surface: #111113;
+  --bg-base: #243B43;
+  --bg-surface: #1A2B32;
   --text-primary: #F5F5F0;
   --text-secondary: #8A8A85;
   --text-muted: #4A4A48;

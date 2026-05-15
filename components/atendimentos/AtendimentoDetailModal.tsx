@@ -5,7 +5,7 @@ import { GlassModal } from '@/components/ui/GlassModal'
 import { Spinner } from '@/components/ui/Spinner'
 import { Building2, Phone, MessageSquare, Star, Monitor, Calendar, DollarSign, Smile, Copy, Check } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
-import { formatCusto, formatDuracao, sentimentoBadge } from '@/lib/atendimentos'
+import { formatCusto, formatDuracao, parseTranscricao, sentimentoBadge } from '@/lib/atendimentos'
 
 interface Props {
   record: AtendimentoRecord | null
@@ -37,42 +37,47 @@ export function AtendimentoDetailModal({
   const detail = record
   const problema = detail.problema_extraido
   const temProblema = problema?.tem_problema_extraivel === true
+  const isChat = detail.tipo_contato === 'chat'
 
   return (
     <GlassModal open={open} onClose={onClose} title="Detalhes do Atendimento" className="max-w-4xl">
       <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-2">
-        {/* Header */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-          <Meta icon={<Calendar size={12} />} label="Início" value={fmt(detail.data_hora_chegada)} />
-          <Meta icon={<Calendar size={12} />} label="Fim" value={fmt(detail.data_hora_saida)} />
-          <Meta label="Duração" value={formatDuracao(detail.duracao_segundos)} />
-          <Meta icon={<DollarSign size={12} />} label="Custo" value={formatCusto(detail.custo_real)} />
-        </div>
-
-        {/* Sentimento + ID */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <div className="glass p-3">
-            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted mb-1">
-              <Smile size={12} />
-              Sentimento do cliente
-            </div>
-            {(() => {
-              const b = sentimentoBadge(detail.sentimento_cliente)
-              return b ? (
-                <span
-                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${b.cls}`}
-                >
-                  {b.label}
-                </span>
-              ) : (
-                <p className="text-sm text-muted">—</p>
-              )
-            })()}
+        {/* Header — só faz sentido em ligação (chat não tem início/fim/duração/custo) */}
+        {!isChat && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <Meta icon={<Calendar size={12} />} label="Início" value={fmt(detail.data_hora_chegada)} />
+            <Meta icon={<Calendar size={12} />} label="Fim" value={fmt(detail.data_hora_saida)} />
+            <Meta label="Duração" value={formatDuracao(detail.duracao_segundos)} />
+            <Meta icon={<DollarSign size={12} />} label="Custo" value={formatCusto(detail.custo_real)} />
           </div>
-          <IdLigacaoMeta value={detail.id_ligacao} />
-        </div>
+        )}
 
-        {/* Cliente */}
+        {/* Sentimento + ID Ligação — escondido em chat */}
+        {!isChat && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <div className="glass p-3">
+              <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted mb-1">
+                <Smile size={12} />
+                Sentimento do cliente
+              </div>
+              {(() => {
+                const b = sentimentoBadge(detail.sentimento_cliente)
+                return b ? (
+                  <span
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${b.cls}`}
+                  >
+                    {b.label}
+                  </span>
+                ) : (
+                  <p className="text-sm text-muted">—</p>
+                )
+              })()}
+            </div>
+            <IdLigacaoMeta value={detail.id_ligacao} />
+          </div>
+        )}
+
+        {/* Cliente — em chat oculta AnyDesk (não se aplica) */}
         <Section title="Cliente">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
             <Meta icon={<Building2 size={12} />} label="Empresa" value={detail.nome_empresa} />
@@ -80,7 +85,9 @@ export function AtendimentoDetailModal({
             <Meta label="Cliente" value={detail.cliente_nome} />
             <Meta icon={<Phone size={12} />} label="Telefone" value={detail.phone} />
             <Meta icon={<MessageSquare size={12} />} label="WhatsApp" value={detail.whatsapp_contato} />
-            <Meta icon={<Monitor size={12} />} label="AnyDesk" value={detail.numero_anydesk} />
+            {!isChat && (
+              <Meta icon={<Monitor size={12} />} label="AnyDesk" value={detail.numero_anydesk} />
+            )}
           </div>
         </Section>
 
@@ -141,6 +148,7 @@ export function AtendimentoDetailModal({
         <TranscricaoBlock
           formatada={detail.transcricao_formatada}
           original={detail.transcricao}
+          isChat={isChat}
         />
 
         {/* Avaliações */}
@@ -183,9 +191,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function TranscricaoBlock({
   formatada,
   original,
+  isChat,
 }: {
   formatada: string | null
   original: string | null
+  isChat: boolean
 }) {
   const hasFormatada = !!formatada && formatada.trim() !== ''
   const hasOriginal = !!original && original.trim() !== ''
@@ -205,10 +215,15 @@ function TranscricaoBlock({
 
   const showing = view === 'formatada' && hasFormatada ? formatada : original
   const text = String(showing ?? '')
+  // Para chat sempre renderiza a partir do texto bruto (transcricao),
+  // que é onde vem a estrutura "Speaker: ...".
+  const chatSource = isChat ? String(original ?? '') : text
+  const messages = isChat ? parseTranscricao(chatSource) : []
+  const showBubbles = isChat && messages.length > 0
 
   async function copyAll() {
     try {
-      await navigator.clipboard.writeText(text)
+      await navigator.clipboard.writeText(isChat ? chatSource : text)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {
@@ -219,7 +234,7 @@ function TranscricaoBlock({
   return (
     <Section title="Transcrição">
       <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-        {hasFormatada && hasOriginal ? (
+        {!isChat && hasFormatada && hasOriginal ? (
           <div className="inline-flex rounded-xl border border-glass-border overflow-hidden text-xs">
             <button
               type="button"
@@ -246,7 +261,7 @@ function TranscricaoBlock({
           </div>
         ) : (
           <span className="text-[11px] uppercase tracking-wider text-muted">
-            {hasFormatada ? 'Formatada' : 'Original (Supabase)'}
+            {isChat ? 'Conversa' : hasFormatada ? 'Formatada' : 'Original (Supabase)'}
           </span>
         )}
 
@@ -266,10 +281,58 @@ function TranscricaoBlock({
         </button>
       </div>
 
-      <pre className="text-xs text-secondary bg-glass border border-glass-border rounded-xl p-3 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-[320px]">
-        {text}
-      </pre>
+      {showBubbles ? (
+        <ChatBubbles messages={messages} />
+      ) : (
+        <pre className="text-xs text-secondary bg-glass border border-glass-border rounded-xl p-3 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-[320px]">
+          {text}
+        </pre>
+      )}
     </Section>
+  )
+}
+
+function ChatBubbles({
+  messages,
+}: {
+  messages: import('@/lib/atendimentos').TranscricaoMessage[]
+}) {
+  return (
+    <div className="bg-glass border border-glass-border rounded-xl p-4 max-h-[420px] overflow-y-auto space-y-3">
+      {messages.map((m, idx) => {
+        const prev = idx > 0 ? messages[idx - 1] : null
+        const showSpeaker = !prev || prev.speaker !== m.speaker
+        return (
+          <div
+            key={idx}
+            className={`flex ${m.isClient ? 'justify-start' : 'justify-end'}`}
+          >
+            <div className={`max-w-[78%] ${m.isClient ? '' : 'items-end'}`}>
+              {showSpeaker && m.speaker && (
+                <p
+                  className={`text-[10px] uppercase tracking-wider mb-1 ${
+                    m.isClient
+                      ? 'text-blue-400 text-left'
+                      : 'text-orange-400 text-right'
+                  }`}
+                >
+                  {m.speaker}
+                </p>
+              )}
+              <div
+                className={`px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed border ${
+                  m.isClient
+                    ? 'bg-blue-500/10 border-blue-500/25 text-blue-50 rounded-2xl rounded-bl-sm'
+                    : 'bg-orange-500/10 border-orange-500/30 text-orange-50 rounded-2xl rounded-br-sm'
+                }`}
+              >
+                {m.text || '—'}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

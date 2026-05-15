@@ -153,7 +153,7 @@ export function KnowledgeItemCard({ item, productSlug, currentModuleName, onEdit
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Buscar módulo..."
                   autoFocus
-                  className="w-full h-8 pl-8 pr-3 rounded-lg bg-[rgba(255,255,255,0.06)] border border-glass-border text-sm text-primary placeholder:text-muted outline-none focus:border-orange-500/50 transition-all"
+                  className="w-full h-8 pl-8 pr-3 rounded-lg bg-[rgba(255,255,255,0.06)] border border-glass-border text-sm text-primary placeholder:text-white/70 outline-none focus:border-orange-500/50 transition-all"
                 />
               </div>
               <div className="max-h-48 overflow-y-auto space-y-0.5">

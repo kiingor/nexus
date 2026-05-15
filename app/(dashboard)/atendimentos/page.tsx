@@ -413,7 +413,7 @@ export default function AtendimentosPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar empresa, CNPJ, telefone, ID da ligação..."
-          className="flex-1 min-w-[200px] bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 placeholder:text-orange-400/40"
+          className="flex-1 min-w-[200px] bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 placeholder:text-white/70"
         />
       </div>
 

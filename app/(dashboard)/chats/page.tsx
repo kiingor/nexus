@@ -276,7 +276,7 @@ export default function ChatsPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
             placeholder="Buscar cliente, CNPJ, atendente..."
-            className="w-full pl-9 pr-4 py-2 rounded-xl bg-glass border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50 placeholder:text-muted" />
+            className="w-full pl-9 pr-4 py-2 rounded-xl bg-glass border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50 placeholder:text-white/70" />
         </div>
         <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1) }}
           className="px-3 py-2 rounded-xl bg-glass border border-glass-border text-secondary text-sm focus:outline-none focus:border-orange-500/50">

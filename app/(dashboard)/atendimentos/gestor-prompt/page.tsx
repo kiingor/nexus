@@ -422,7 +422,7 @@ export default function GestorPromptPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar empresa, CNPJ, telefone, ID..."
-            className="flex-1 min-w-[220px] bg-glass border border-glass-border rounded-xl px-3 py-1.5 text-sm text-primary outline-none focus:border-orange-500/40 placeholder:text-muted"
+            className="flex-1 min-w-[220px] bg-glass border border-glass-border rounded-xl px-3 py-1.5 text-sm text-primary outline-none focus:border-orange-500/40 placeholder:text-white/70"
           />
         </div>
 

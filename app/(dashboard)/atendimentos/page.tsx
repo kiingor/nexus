@@ -21,6 +21,114 @@ import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
 
 const PAGE_SIZE = 30
 
+// Janela usada pra agrupar atendimentos consecutivos da mesma empresa
+// (mesmo CNPJ) quando o gap entre o fim de um e o início do próximo for
+// menor que isso. Acontece quando o cliente liga/conversa em sequência.
+const MERGE_WINDOW_MS = 5 * 60 * 1000
+
+export type MergedAtendimento = AtendimentoRecord & {
+  /** 1 = sem agrupamento; > 1 indica quantos atendimentos formam essa linha. */
+  mergedCount: number
+  /** IDs originais (ordem cronológica ascendente). */
+  mergedIds: number[]
+  /** Registros originais (ordem cronológica ascendente). */
+  mergedRecords: AtendimentoRecord[]
+}
+
+function arrivalMs(r: AtendimentoRecord): number {
+  const s = r.data_hora_chegada ?? r.criado_em ?? ''
+  const t = Date.parse(s)
+  return Number.isNaN(t) ? 0 : t
+}
+
+function departureMs(r: AtendimentoRecord): number {
+  const s = r.data_hora_saida ?? r.data_hora_chegada ?? r.criado_em ?? ''
+  const t = Date.parse(s)
+  return Number.isNaN(t) ? 0 : t
+}
+
+function buildMergedAtendimento(group: AtendimentoRecord[]): MergedAtendimento {
+  if (group.length === 1) {
+    return {
+      ...group[0],
+      mergedCount: 1,
+      mergedIds: [group[0].id],
+      mergedRecords: group,
+    }
+  }
+  const first = group[0]
+  const last = group[group.length - 1]
+  // Soma de duração quando todos têm valor; senão deixa null.
+  const allHaveDur = group.every((r) => typeof r.duracao_segundos === 'number')
+  const totalDur = allHaveDur
+    ? group.reduce((s, r) => s + (r.duracao_segundos ?? 0), 0)
+    : null
+
+  return {
+    // Base = último atendimento (status / destino / sentimento mais recentes).
+    ...last,
+    // Datas: começo do mais antigo, saída do mais recente.
+    data_hora_chegada: first.data_hora_chegada,
+    data_hora_saida: last.data_hora_saida,
+    duracao_segundos: totalDur,
+    mergedCount: group.length,
+    mergedIds: group.map((r) => r.id),
+    mergedRecords: group,
+  }
+}
+
+/**
+ * Agrupa atendimentos consecutivos da mesma empresa (mesmo CNPJ) quando o
+ * gap entre o fim do anterior e o início do próximo for < MERGE_WINDOW_MS.
+ *
+ * Atendimentos sem CNPJ NÃO agrupam — cada um vira sua própria linha.
+ *
+ * Limitação consciente: o agrupamento opera sobre o array recebido (a
+ * página atual). Um grupo que atravessa fronteira de página aparecerá
+ * dividido — o backend é quem pagina, então corrigir isso exigiria mudança
+ * lá. Não é o caso comum, deixa pra depois.
+ */
+function mergeAtendimentosByCnpj(records: AtendimentoRecord[]): MergedAtendimento[] {
+  const withCnpj: AtendimentoRecord[] = []
+  const withoutCnpj: AtendimentoRecord[] = []
+  for (const r of records) {
+    if (r.cnpj && r.cnpj.trim()) withCnpj.push(r)
+    else withoutCnpj.push(r)
+  }
+
+  const byCnpj = new Map<string, AtendimentoRecord[]>()
+  for (const r of withCnpj) {
+    const key = (r.cnpj as string).trim()
+    const list = byCnpj.get(key)
+    if (list) list.push(r)
+    else byCnpj.set(key, [r])
+  }
+
+  const out: MergedAtendimento[] = []
+  for (const list of byCnpj.values()) {
+    list.sort((a, b) => arrivalMs(a) - arrivalMs(b))
+    let group: AtendimentoRecord[] = []
+    for (const r of list) {
+      if (group.length === 0) { group.push(r); continue }
+      const prev = group[group.length - 1]
+      const gap = arrivalMs(r) - departureMs(prev)
+      if (Number.isFinite(gap) && gap >= 0 && gap < MERGE_WINDOW_MS) {
+        group.push(r)
+      } else {
+        out.push(buildMergedAtendimento(group))
+        group = [r]
+      }
+    }
+    if (group.length) out.push(buildMergedAtendimento(group))
+  }
+
+  for (const r of withoutCnpj) out.push(buildMergedAtendimento([r]))
+
+  // Mantém a ordem visual atual (mais recente primeiro).
+  out.sort((a, b) => departureMs(b) - departureMs(a))
+  return out
+}
+
 type StatsResponse = {
   total: number
   em_atendimento: number
@@ -81,6 +189,10 @@ export default function AtendimentosPage() {
   const [destinoFilter, setDestinoFilter] = useState<DestinoFilter>('all')
   const [tipoContatoFilter, setTipoContatoFilter] = useState<TipoContatoFilter>('all')
   const [comProblema, setComProblema] = useState(false)
+  // Filtro client-side: mostra só grupos resultantes do agrupamento por CNPJ
+  // (mais de um atendimento unido). Como o agrupamento é client-side,
+  // este filtro também tem que ser — não vai pro server e não reseta página.
+  const [soUnidos, setSoUnidos] = useState(false)
   const [search, setSearch] = useState('')
   const [searchDebounced, setSearchDebounced] = useState('')
   const [dayFilter, setDayFilter] = useState('')
@@ -241,10 +353,21 @@ export default function AtendimentosPage() {
     }
   }, [])
 
-  // Filtragem agora é toda server-side; `records` já vem com a página
-  // certa após aplicar todos os filtros. Mantemos só uma variável de
-  // compatibilidade visual pra empty state.
+  // Agrupa atendimentos consecutivos da mesma empresa (gap < 5min) numa
+  // única linha. Roda em cima do que veio da página atual.
+  const mergedRecords = useMemo(() => mergeAtendimentosByCnpj(records), [records])
+
+  // Aplica o filtro client-side "Só unidos" em cima do resultado do merge.
+  const visibleRecords = useMemo(
+    () => (soUnidos ? mergedRecords.filter((r) => r.mergedCount > 1) : mergedRecords),
+    [mergedRecords, soUnidos]
+  )
+
+  // Filtragem (server-side) já trouxe a página certa. `hasRecords` reflete
+  // o que o servidor mandou; `noUnidosOnPage` cobre o caso em que o filtro
+  // client-side de unidos zerou a página atual.
   const hasRecords = records.length > 0
+  const noUnidosOnPage = hasRecords && soUnidos && visibleRecords.length === 0
   const rangeStart = (page - 1) * PAGE_SIZE + 1
   const rangeEnd = Math.min(page * PAGE_SIZE, totalFiltered)
 
@@ -408,6 +531,19 @@ export default function AtendimentosPage() {
           Só com problema extraído
         </label>
 
+        <label
+          title="Mostrar só atendimentos da mesma empresa unidos por proximidade (<5min). Filtro local sobre a página atual."
+          className="flex items-center gap-2 text-sm text-secondary cursor-pointer select-none"
+        >
+          <input
+            type="checkbox"
+            checked={soUnidos}
+            onChange={(e) => setSoUnidos(e.target.checked)}
+            className="accent-orange-500"
+          />
+          Só unidos
+        </label>
+
         <input
           type="text"
           value={search}
@@ -429,9 +565,18 @@ export default function AtendimentosPage() {
             Os atendimentos registrados pela Central IA aparecerão aqui.
           </p>
         </div>
+      ) : noUnidosOnPage ? (
+        <div className="glass p-12 text-center">
+          <Headphones size={32} className="mx-auto mb-3 text-muted" />
+          <p className="text-primary font-medium mb-1">Nenhum atendimento unido nesta página</p>
+          <p className="text-sm text-muted">
+            O agrupamento é feito sobre os atendimentos da página atual. Tente
+            navegar em outras páginas ou desmarcar "Só unidos".
+          </p>
+        </div>
       ) : (
         <>
-          <AtendimentosList records={records} onSelect={openDetail} />
+          <AtendimentosList records={visibleRecords} onSelect={openDetail} />
           <Pagination
             page={page}
             totalPages={totalPages}

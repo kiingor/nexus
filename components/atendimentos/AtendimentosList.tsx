@@ -1,11 +1,18 @@
 'use client'
 
-import { Building2, Calendar, MessageCircle, Phone, PhoneCall, Star } from 'lucide-react'
+import { Building2, Calendar, Layers, MessageCircle, Phone, PhoneCall, Star } from 'lucide-react'
 import type { AtendimentoRecord } from '@/lib/types'
 
+// `mergedCount`/`mergedIds` são opcionais — vêm do agrupamento client-side
+// feito na página. Quando ausentes, o componente se comporta como antes.
+export type AtendimentoListRecord = AtendimentoRecord & {
+  mergedCount?: number
+  mergedIds?: number[]
+}
+
 interface Props {
-  records: AtendimentoRecord[]
-  onSelect: (record: AtendimentoRecord) => void
+  records: AtendimentoListRecord[]
+  onSelect: (record: AtendimentoListRecord) => void
 }
 
 // Janela em milissegundos para considerar um atendimento "novo" — usada
@@ -159,9 +166,18 @@ export function AtendimentosList({ records, onSelect }: Props) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-primary">
-                    <div className="flex items-center gap-1.5 max-w-[200px] truncate">
+                    <div className="flex items-center gap-1.5 max-w-[260px]">
                       <Building2 size={12} className="text-muted shrink-0" />
                       <span className="truncate">{r.nome_empresa || '—'}</span>
+                      {typeof r.mergedCount === 'number' && r.mergedCount > 1 && (
+                        <span
+                          title={`${r.mergedCount} atendimentos unidos · IDs: ${(r.mergedIds ?? []).join(', ')}`}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border bg-orange-500/10 border-orange-500/30 text-orange-300 shrink-0 whitespace-nowrap"
+                        >
+                          <Layers size={10} />
+                          +{r.mergedCount - 1} unidos
+                        </span>
+                      )}
                     </div>
                     {r.cnpj && (
                       <div className="text-[11px] text-muted mt-0.5">{r.cnpj}</div>

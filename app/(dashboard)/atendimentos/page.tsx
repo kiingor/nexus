@@ -163,31 +163,56 @@ type DestinoFilter = 'all' | 'servicedesk' | 'financeiro'
 type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
 type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
 
-// Intervalo [from, to) no fuso UTC-3 (horário de Brasília)
-function buildDateRange(day: string, hour: string): { from?: string; to?: string } {
-  if (!day) return {}
-  if (hour === 'all' || hour === '') {
+// Constrói o intervalo [from, to) no fuso UTC-3 (horário de Brasília).
+//
+// Lógica:
+// - `fromDay` vazio → ignora tudo, retorna {}.
+// - `fromDay` + `toDay` (≠ fromDay) → intervalo abrangendo de 00:00 do
+//   primeiro dia até 23:59:59.999 do último. Hora é IGNORADA num período.
+// - Só `fromDay` (ou fromDay === toDay) → dia único, respeita `hour`
+//   como antes.
+function buildDateRange(
+  fromDay: string,
+  toDay: string,
+  hour: string
+): { from?: string; to?: string } {
+  if (!fromDay) return {}
+
+  // Período (dois dias diferentes) — ignora hour
+  if (toDay && toDay !== fromDay) {
+    // Garante from <= to mesmo se o usuário inverter a ordem
+    const [start, end] = fromDay <= toDay ? [fromDay, toDay] : [toDay, fromDay]
     return {
-      from: `${day}T00:00:00-03:00`,
-      to: `${day}T23:59:59.999-03:00`,
+      from: `${start}T00:00:00-03:00`,
+      to: `${end}T23:59:59.999-03:00`,
     }
   }
+
+  // Dia único com hour="all" → dia inteiro
+  if (hour === 'all' || hour === '') {
+    return {
+      from: `${fromDay}T00:00:00-03:00`,
+      to: `${fromDay}T23:59:59.999-03:00`,
+    }
+  }
+
+  // Dia único com hora específica
   const h = Number(hour)
   const nextH = h + 1
   const pad = (n: number) => String(n).padStart(2, '0')
   if (nextH >= 24) {
     // Última faixa 23:00 → próximo dia 00:00
-    const d = new Date(`${day}T00:00:00-03:00`)
+    const d = new Date(`${fromDay}T00:00:00-03:00`)
     d.setDate(d.getDate() + 1)
     const nextDay = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
     return {
-      from: `${day}T23:00:00-03:00`,
+      from: `${fromDay}T23:00:00-03:00`,
       to: `${nextDay}T00:00:00-03:00`,
     }
   }
   return {
-    from: `${day}T${pad(h)}:00:00-03:00`,
-    to: `${day}T${pad(nextH)}:00:00-03:00`,
+    from: `${fromDay}T${pad(h)}:00:00-03:00`,
+    to: `${fromDay}T${pad(nextH)}:00:00-03:00`,
   }
 }
 
@@ -211,7 +236,11 @@ export default function AtendimentosPage() {
   const [soUnidos, setSoUnidos] = useState(false)
   const [search, setSearch] = useState('')
   const [searchDebounced, setSearchDebounced] = useState('')
-  const [dayFilter, setDayFilter] = useState('')
+  const [fromDate, setFromDate] = useState('')
+  // Data final do período. Vazio = filtra apenas pelo dia em `fromDate`.
+  // Quando preenchido e diferente de `fromDate`, vira intervalo e o filtro
+  // de hora abaixo é ignorado pela query (e desabilitado no UI).
+  const [toDate, setToDate] = useState('')
   const [hourFilter, setHourFilter] = useState<'all' | string>('all')
   const [sentimentoFilter, setSentimentoFilter] = useState<SentimentoFilter>('all')
 
@@ -241,7 +270,8 @@ export default function AtendimentosPage() {
     destinoFilter,
     tipoContatoFilter,
     comProblema,
-    dayFilter,
+    fromDate,
+    toDate,
     hourFilter,
     sentimentoFilter,
     searchDebounced,
@@ -257,7 +287,7 @@ export default function AtendimentosPage() {
       if (sentimentoFilter !== 'all') params.set('sentimento', sentimentoFilter)
       if (comProblema) params.set('com_problema', 'true')
       if (searchDebounced) params.set('search', searchDebounced)
-      const { from, to } = buildDateRange(dayFilter, hourFilter)
+      const { from, to } = buildDateRange(fromDate, toDate, hourFilter)
       if (from) params.set('from', from)
       if (to) params.set('to', to)
       if (includePagination) {
@@ -273,7 +303,8 @@ export default function AtendimentosPage() {
       sentimentoFilter,
       comProblema,
       searchDebounced,
-      dayFilter,
+      fromDate,
+      toDate,
       hourFilter,
       page,
     ]
@@ -517,37 +548,66 @@ export default function AtendimentosPage() {
           <option value="negativo">Negativo</option>
         </select>
 
-        <input
-          type="date"
-          value={dayFilter}
-          onChange={(e) => setDayFilter(e.target.value)}
-          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark]"
-        />
+        {/* Período: De / Até. Se "Até" estiver vazio, filtra só pelo dia
+            em "De". Se ambos forem iguais, comporta-se igual antes (com
+            filtro de hora habilitado). Se forem diferentes, vira intervalo
+            e a hora é ignorada/desabilitada. */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-muted">De</span>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark]"
+          />
+          <span className="text-[10px] uppercase tracking-wider text-muted">Até</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            disabled={!fromDate}
+            title={!fromDate ? 'Escolha a data inicial primeiro' : 'Data final do período'}
+            min={fromDate || undefined}
+            className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-40 disabled:cursor-not-allowed [color-scheme:dark]"
+          />
+        </div>
 
-        <select
-          value={hourFilter}
-          onChange={(e) => setHourFilter(e.target.value)}
-          disabled={!dayFilter}
-          title={!dayFilter ? 'Escolha um dia primeiro' : 'Faixa de hora'}
-          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-40 disabled:cursor-not-allowed [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
-        >
-          <option value="all">Dia todo</option>
-          {Array.from({ length: 24 }).map((_, h) => {
-            const from = String(h).padStart(2, '0')
-            const to = String((h + 1) % 24).padStart(2, '0')
-            return (
-              <option key={h} value={String(h)}>
-                {from}:00 – {to}:00
-              </option>
-            )
-          })}
-        </select>
+        {(() => {
+          const isPeriodo = !!toDate && toDate !== fromDate
+          const hourDisabled = !fromDate || isPeriodo
+          const hourTitle = !fromDate
+            ? 'Escolha um dia primeiro'
+            : isPeriodo
+              ? 'Filtro de hora indisponível em período (vários dias)'
+              : 'Faixa de hora'
+          return (
+            <select
+              value={isPeriodo ? 'all' : hourFilter}
+              onChange={(e) => setHourFilter(e.target.value)}
+              disabled={hourDisabled}
+              title={hourTitle}
+              className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-40 disabled:cursor-not-allowed [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
+            >
+              <option value="all">Dia todo</option>
+              {Array.from({ length: 24 }).map((_, h) => {
+                const from = String(h).padStart(2, '0')
+                const to = String((h + 1) % 24).padStart(2, '0')
+                return (
+                  <option key={h} value={String(h)}>
+                    {from}:00 – {to}:00
+                  </option>
+                )
+              })}
+            </select>
+          )
+        })()}
 
-        {dayFilter && (
+        {(fromDate || toDate) && (
           <button
             type="button"
             onClick={() => {
-              setDayFilter('')
+              setFromDate('')
+              setToDate('')
               setHourFilter('all')
             }}
             className="text-xs text-muted hover:text-primary underline underline-offset-2"

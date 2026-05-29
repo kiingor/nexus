@@ -93,29 +93,30 @@ function tipoContatoBadge(
   }
 }
 
-// Renderiza a nota como 5 estrelas, preenchendo as primeiras `nota`.
-// Cor adapta ao valor: 1-2 vermelho, 3 amarelo, 4-5 verde.
+// Renderiza a nota 1-10 como número com cor por faixa.
+// 1-3 vermelho · 4-6 amarelo · 7-8 verde claro · 9-10 verde escuro.
 function NotaCell({ nota }: { nota: number | null | undefined }) {
   if (nota == null || Number.isNaN(nota)) {
     return <span className="text-xs text-muted">—</span>
   }
-  const clamped = Math.max(1, Math.min(5, Math.round(nota)))
-  const color =
-    clamped >= 4 ? 'text-green-400' : clamped === 3 ? 'text-yellow-400' : 'text-red-400'
+  const clamped = Math.max(1, Math.min(10, Math.round(nota)))
+  const palette =
+    clamped >= 9
+      ? { fg: 'text-green-300', bg: 'bg-green-500/15', border: 'border-green-500/40' }
+      : clamped >= 7
+        ? { fg: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/25' }
+        : clamped >= 4
+          ? { fg: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/25' }
+          : { fg: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/25' }
   return (
-    <div
-      className="inline-flex items-center gap-0.5"
-      title={`Nota: ${clamped}/5`}
-      aria-label={`Nota ${clamped} de 5`}
+    <span
+      title={`Nota: ${clamped}/10`}
+      aria-label={`Nota ${clamped} de 10`}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border whitespace-nowrap ${palette.fg} ${palette.bg} ${palette.border}`}
     >
-      {Array.from({ length: 5 }).map((_, i) => (
-        <Star
-          key={i}
-          size={12}
-          className={i < clamped ? `${color} fill-current` : 'text-muted/30'}
-        />
-      ))}
-    </div>
+      <Star size={11} className="fill-current" />
+      {clamped}/10
+    </span>
   )
 }
 

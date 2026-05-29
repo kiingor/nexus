@@ -1,6 +1,6 @@
 'use client'
 
-import { Building2, Calendar, Layers, MessageCircle, Phone, PhoneCall, Star } from 'lucide-react'
+import { Building2, Calendar, Layers, MessageCircle, Monitor, Phone, PhoneCall, Star } from 'lucide-react'
 import type { AtendimentoRecord } from '@/lib/types'
 
 // `mergedCount`/`mergedIds` são opcionais — vêm do agrupamento client-side
@@ -93,6 +93,32 @@ function tipoContatoBadge(
   }
 }
 
+// Renderiza a nota como 5 estrelas, preenchendo as primeiras `nota`.
+// Cor adapta ao valor: 1-2 vermelho, 3 amarelo, 4-5 verde.
+function NotaCell({ nota }: { nota: number | null | undefined }) {
+  if (nota == null || Number.isNaN(nota)) {
+    return <span className="text-xs text-muted">—</span>
+  }
+  const clamped = Math.max(1, Math.min(5, Math.round(nota)))
+  const color =
+    clamped >= 4 ? 'text-green-400' : clamped === 3 ? 'text-yellow-400' : 'text-red-400'
+  return (
+    <div
+      className="inline-flex items-center gap-0.5"
+      title={`Nota: ${clamped}/5`}
+      aria-label={`Nota ${clamped} de 5`}
+    >
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Star
+          key={i}
+          size={12}
+          className={i < clamped ? `${color} fill-current` : 'text-muted/30'}
+        />
+      ))}
+    </div>
+  )
+}
+
 export function AtendimentosList({ records, onSelect }: Props) {
   return (
     <div className="glass overflow-hidden">
@@ -106,6 +132,7 @@ export function AtendimentosList({ records, onSelect }: Props) {
               <th className="px-4 py-3 font-medium">Destino</th>
               <th className="px-4 py-3 font-medium">Empresa</th>
               <th className="px-4 py-3 font-medium">Telefone</th>
+              <th className="px-4 py-3 font-medium">Nota</th>
             </tr>
           </thead>
           <tbody>
@@ -166,9 +193,18 @@ export function AtendimentosList({ records, onSelect }: Props) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-primary">
-                    <div className="flex items-center gap-1.5 max-w-[260px]">
+                    <div className="flex items-center gap-1.5 max-w-[320px]">
                       <Building2 size={12} className="text-muted shrink-0" />
                       <span className="truncate">{r.nome_empresa || '—'}</span>
+                      {r.pdv && r.pdv.trim() && (
+                        <span
+                          title={`PDV: ${r.pdv}`}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border bg-cyan-500/10 border-cyan-500/30 text-cyan-300 shrink-0 whitespace-nowrap max-w-[140px] truncate"
+                        >
+                          <Monitor size={10} className="shrink-0" />
+                          <span className="truncate">{r.pdv}</span>
+                        </span>
+                      )}
                       {typeof r.mergedCount === 'number' && r.mergedCount > 1 && (
                         <span
                           title={`${r.mergedCount} atendimentos unidos · IDs: ${(r.mergedIds ?? []).join(', ')}`}
@@ -188,6 +224,9 @@ export function AtendimentosList({ records, onSelect }: Props) {
                       <Phone size={12} className="text-muted" />
                       {r.phone || '—'}
                     </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <NotaCell nota={r.nota} />
                   </td>
                 </tr>
               )

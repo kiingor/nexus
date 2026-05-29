@@ -13,6 +13,18 @@ interface Props {
   onClose: () => void
   avaliacoes: AvaliacaoAtendimentoRecord[]
   loadingAvaliacoes: boolean
+  /**
+   * Quando o atendimento veio de um grupo "unido" (mesma empresa, gap < 5min),
+   * passa todos os registros do grupo aqui em ordem cronológica ascendente.
+   * O modal renderiza abas "Atendimento 1..N" pra navegar entre eles.
+   * Vazio ou undefined = atendimento isolado, sem abas.
+   */
+  group?: AtendimentoRecord[]
+  /**
+   * Chamado ao trocar de aba — a página usa pra recarregar avaliações do
+   * registro selecionado.
+   */
+  onSelectRecord?: (record: AtendimentoRecord) => void
 }
 
 function fmt(iso: string | null) {
@@ -31,6 +43,8 @@ export function AtendimentoDetailModal({
   onClose,
   avaliacoes,
   loadingAvaliacoes,
+  group,
+  onSelectRecord,
 }: Props) {
   if (!record) return null
 
@@ -39,9 +53,42 @@ export function AtendimentoDetailModal({
   const temProblema = problema?.tem_problema_extraivel === true
   const isChat = detail.tipo_contato === 'chat'
 
+  // Abas só aparecem quando vieram >1 atendimentos no grupo. Mantemos a
+  // ordem cronológica ascendente: "Atendimento 1" = mais antigo.
+  const hasTabs = Array.isArray(group) && group.length > 1
+  const activeIndex = hasTabs ? group!.findIndex((r) => r.id === record.id) : -1
+
   return (
     <GlassModal open={open} onClose={onClose} title="Detalhes do Atendimento" className="max-w-4xl">
       <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-2">
+        {hasTabs && (
+          <div className="flex items-center gap-1.5 flex-wrap border-b border-glass-border pb-3">
+            <span className="text-[10px] uppercase tracking-wider text-muted mr-2">
+              {group!.length} atendimentos unidos
+            </span>
+            {group!.map((r, idx) => {
+              const isActive = idx === activeIndex
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => {
+                    if (!isActive && onSelectRecord) onSelectRecord(r)
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer whitespace-nowrap ${
+                    isActive
+                      ? 'bg-orange-500/15 border-orange-500/40 text-orange-300'
+                      : 'bg-glass border-glass-border text-muted hover:text-primary hover:border-orange-500/30'
+                  }`}
+                  title={`ID #${r.id}${r.data_hora_chegada ? ' · ' + fmt(r.data_hora_chegada) : ''}`}
+                >
+                  Atendimento {idx + 1}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {/* Header — só faz sentido em ligação (chat não tem início/fim/duração/custo) */}
         {!isChat && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">

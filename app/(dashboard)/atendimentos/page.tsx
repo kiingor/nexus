@@ -64,6 +64,18 @@ function buildMergedAtendimento(group: AtendimentoRecord[]): MergedAtendimento {
     ? group.reduce((s, r) => s + (r.duracao_segundos ?? 0), 0)
     : null
 
+  // PDV: se todos os atendimentos unidos tiverem o mesmo PDV (ou apenas
+  // um deles tiver valor), preserva. Se variar, marca como "Vários PDVs".
+  const distinctPdvs = Array.from(
+    new Set(group.map((r) => (r.pdv ?? '').trim()).filter(Boolean))
+  )
+  const mergedPdv =
+    distinctPdvs.length === 0
+      ? null
+      : distinctPdvs.length === 1
+        ? distinctPdvs[0]
+        : 'Vários PDVs'
+
   return {
     // Base = último atendimento (status / destino / sentimento mais recentes).
     ...last,
@@ -71,6 +83,7 @@ function buildMergedAtendimento(group: AtendimentoRecord[]): MergedAtendimento {
     data_hora_chegada: first.data_hora_chegada,
     data_hora_saida: last.data_hora_saida,
     duracao_segundos: totalDur,
+    pdv: mergedPdv,
     mergedCount: group.length,
     mergedIds: group.map((r) => r.id),
     mergedRecords: group,
@@ -182,6 +195,9 @@ export default function AtendimentosPage() {
   const [records, setRecords] = useState<AtendimentoRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<AtendimentoRecord | null>(null)
+  // Grupo de atendimentos unidos que originou o `selected`. Vazio para
+  // atendimentos não-unidos (modal renderiza sem abas).
+  const [selectedGroup, setSelectedGroup] = useState<AtendimentoRecord[]>([])
   const [avaliacoes, setAvaliacoes] = useState<AvaliacaoAtendimentoRecord[]>([])
   const [loadingAvaliacoes, setLoadingAvaliacoes] = useState(false)
 
@@ -351,6 +367,25 @@ export default function AtendimentosPage() {
     } finally {
       setLoadingAvaliacoes(false)
     }
+  }, [])
+
+  // Chamado pela tabela: registra o grupo de unidos (pra alimentar as abas
+  // do modal) e abre o detalhe do registro "base" (mais recente).
+  // O parâmetro é tipado como AtendimentoRecord & extras opcionais pra
+  // bater com a assinatura genérica da AtendimentosList (a runtime sempre
+  // vem como MergedAtendimento porque visibleRecords é MergedAtendimento[]).
+  const handleListSelect = useCallback(
+    (record: AtendimentoRecord & Partial<MergedAtendimento>) => {
+      setSelectedGroup(record.mergedRecords ?? [record])
+      void openDetail(record)
+    },
+    [openDetail]
+  )
+
+  // Limpa estado ao fechar — modal não deve "lembrar" do grupo anterior.
+  const handleCloseDetail = useCallback(() => {
+    setSelected(null)
+    setSelectedGroup([])
   }, [])
 
   // Agrupa atendimentos consecutivos da mesma empresa (gap < 5min) numa
@@ -576,7 +611,7 @@ export default function AtendimentosPage() {
         </div>
       ) : (
         <>
-          <AtendimentosList records={visibleRecords} onSelect={openDetail} />
+          <AtendimentosList records={visibleRecords} onSelect={handleListSelect} />
           <Pagination
             page={page}
             totalPages={totalPages}
@@ -591,9 +626,11 @@ export default function AtendimentosPage() {
       <AtendimentoDetailModal
         record={selected}
         open={!!selected}
-        onClose={() => setSelected(null)}
+        onClose={handleCloseDetail}
         avaliacoes={avaliacoes}
         loadingAvaliacoes={loadingAvaliacoes}
+        group={selectedGroup}
+        onSelectRecord={openDetail}
       />
     </div>
   )

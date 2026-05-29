@@ -213,6 +213,11 @@ export interface AtendimentoRecord {
   criado_em: string | null
   // Tipo de contato (coluna direta na tabela atendimentos): 'ligacao' | 'chat'
   tipo_contato: TipoContato | string | null
+  // PDV (Ponto de Venda) identificado pelo n8n no atendimento.
+  // String livre — pode ser "PDV-01", "Caixa 2", etc.
+  pdv: string | null
+  // Nota do atendimento resolvido (1-5). NULL quando ainda não avaliado.
+  nota: number | null
 }
 
 export interface AvaliacaoAtendimentoRecord {

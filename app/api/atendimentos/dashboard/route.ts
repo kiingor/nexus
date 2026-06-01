@@ -205,31 +205,31 @@ export async function GET(request: NextRequest) {
   }
   const motivoArr = Array.from(motivoStats.values()).filter((m) => m.total > 0)
 
-  // Três cortes da mesma agregação de motivos:
-  // - topMotivos: maior volume (resolvidos + transferidos + em_atendimento + interrompida)
+  // Três cortes da mesma agregação de motivos, devolvendo TUDO (sem
+  // slice). O front controla a paginação visual com "Mostrar mais".
+  // Como há ~35 categorias canônicas, o payload nunca é grande mesmo
+  // sem truncar.
+  // - topMotivos: maior volume total
   // - mostResolvidos: maior número de resoluções pela IA
   // - mostTransferidos: maior número de transferências (gargalo da IA)
-  // Sempre 10 itens (ou menos, se houver menos categorias com dados).
   const topMotivos = [...motivoArr]
     .sort((a, b) => b.total - a.total)
-    .slice(0, 10)
     .map(({ motivo, total }) => ({ motivo, count: total }))
 
   const mostResolvidos = [...motivoArr]
     .filter((m) => m.resolvidos > 0)
     .sort((a, b) => b.resolvidos - a.resolvidos)
-    .slice(0, 10)
     .map(({ motivo, resolvidos }) => ({ motivo, count: resolvidos }))
 
   const mostTransferidos = [...motivoArr]
     .filter((m) => m.transferidos > 0)
     .sort((a, b) => b.transferidos - a.transferidos)
-    .slice(0, 10)
     .map(({ motivo, transferidos }) => ({ motivo, count: transferidos }))
 
   // Worst = motivos com pior % resolução (entre os que TÊM finalizados).
   // Mostra só motivos com pelo menos 3 finalizados pra evitar
   // "categoria com 1 atendimento" liderando o ranking de pior.
+  // Devolve TODOS qualificados; front controla "Mostrar mais".
   const worstMotivos = motivoArr
     .map((m) => {
       const fin = m.resolvidos + m.transferidos
@@ -238,7 +238,6 @@ export async function GET(request: NextRequest) {
     })
     .filter((m) => m.finalizados >= 3 && m.percentual !== null)
     .sort((a, b) => (a.percentual ?? 100) - (b.percentual ?? 100))
-    .slice(0, 6)
 
   return Response.json({
     kpi: {

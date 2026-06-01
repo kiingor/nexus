@@ -1,5 +1,8 @@
 'use client'
 
+import { useState } from 'react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
+
 type Row = {
   motivo: string
   total: number
@@ -11,7 +14,16 @@ type Row = {
 
 // Tabela com motivos de pior taxa de resolução — útil pra identificar
 // onde a IA mais transfere e precisa melhorar.
-export function WorstMotivosTable({ rows }: { rows: Row[] }) {
+// Mostra os primeiros `collapsedCount` por padrão; "Mostrar mais" expande.
+export function WorstMotivosTable({
+  rows,
+  collapsedCount = 6,
+}: {
+  rows: Row[]
+  collapsedCount?: number
+}) {
+  const [expanded, setExpanded] = useState(false)
+
   if (rows.length === 0) {
     return (
       <div className="glass p-4">
@@ -24,6 +36,11 @@ export function WorstMotivosTable({ rows }: { rows: Row[] }) {
       </div>
     )
   }
+
+  const hasMore = rows.length > collapsedCount
+  const visibleRows = expanded ? rows : rows.slice(0, collapsedCount)
+  const hiddenCount = rows.length - collapsedCount
+
   return (
     <div className="glass p-4">
       <h3 className="text-xs uppercase tracking-wider text-muted mb-3">
@@ -42,7 +59,7 @@ export function WorstMotivosTable({ rows }: { rows: Row[] }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {visibleRows.map((r) => {
               const pct = r.percentual ?? 0
               const barColor =
                 pct >= 70 ? 'bg-green-500/70' : pct >= 40 ? 'bg-yellow-500/70' : 'bg-red-500/70'
@@ -68,6 +85,26 @@ export function WorstMotivosTable({ rows }: { rows: Row[] }) {
           </tbody>
         </table>
       </div>
+
+      {hasMore && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-3 inline-flex items-center justify-center gap-1 text-xs text-muted hover:text-primary transition-colors w-full py-1.5 rounded-lg border border-glass-border hover:border-orange-500/30 cursor-pointer"
+        >
+          {expanded ? (
+            <>
+              <ChevronUp size={12} />
+              Mostrar menos
+            </>
+          ) : (
+            <>
+              <ChevronDown size={12} />
+              Mostrar mais ({hiddenCount})
+            </>
+          )}
+        </button>
+      )}
     </div>
   )
 }

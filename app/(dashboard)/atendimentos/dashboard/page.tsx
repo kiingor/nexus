@@ -67,6 +67,8 @@ type DashboardResponse = {
   byStatus: Array<{ status: string; count: number }>
   byDay: Array<{ date: string; resolvidos: number; transferidos: number; outros: number }>
   topMotivos: Array<{ motivo: string; count: number }>
+  mostResolvidos: Array<{ motivo: string; count: number }>
+  mostTransferidos: Array<{ motivo: string; count: number }>
   worstMotivos: Array<{
     motivo: string
     total: number
@@ -83,6 +85,8 @@ const EMPTY: DashboardResponse = {
   byStatus: [],
   byDay: [],
   topMotivos: [],
+  mostResolvidos: [],
+  mostTransferidos: [],
   worstMotivos: [],
   truncated: false,
 }
@@ -316,7 +320,28 @@ export default function AtendimentosDashboardPage() {
             <DailyVolumeChart data={data.byDay} />
           </div>
 
-          <MotivosBarList items={data.topMotivos} />
+          {/* Três cortes do mesmo eixo "motivos de contato" lado a lado.
+              Em telas pequenas, empilham verticalmente. */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <MotivosBarList
+              items={data.topMotivos}
+              title="Mais entraram em contato"
+              accent="orange"
+            />
+            <MotivosBarList
+              items={data.mostResolvidos}
+              title="Mais resolvidos pela IA"
+              accent="green"
+              emptyMessage="Nenhum atendimento resolvido no período."
+            />
+            <MotivosBarList
+              items={data.mostTransferidos}
+              title="Mais transferidos"
+              accent="yellow"
+              emptyMessage="Nenhuma transferência no período."
+            />
+          </div>
+
           <WorstMotivosTable rows={data.worstMotivos} />
         </div>
       )}

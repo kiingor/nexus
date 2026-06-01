@@ -162,6 +162,32 @@ type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 
 type DestinoFilter = 'all' | 'servicedesk' | 'financeiro'
 type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
 type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
+// Presets de período. 'custom' libera os inputs De/Até pro usuário editar.
+type PeriodPreset = 'todos' | 'hoje' | '7d' | '15d' | '30d' | 'custom'
+
+// Converte um Date local pra string YYYY-MM-DD (formato esperado pelo input
+// type="date"). Usa componentes locais — NÃO toISOString — pra evitar drift
+// de timezone (que jogaria pro dia anterior em fusos atrás de UTC).
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
+}
+
+// Resolve um preset em {from, to}. 'todos' devolve datas vazias (sem filtro).
+// 'custom' devolve null pra sinalizar "não tocar nas datas atuais".
+function resolvePreset(preset: PeriodPreset): { from: string; to: string } | null {
+  if (preset === 'custom') return null
+  if (preset === 'todos') return { from: '', to: '' }
+  const today = new Date()
+  const to = toLocalDateStr(today)
+  if (preset === 'hoje') return { from: to, to }
+  const daysBack = preset === '7d' ? 6 : preset === '15d' ? 14 : 29 // '30d'
+  const start = new Date(today)
+  start.setDate(start.getDate() - daysBack)
+  return { from: toLocalDateStr(start), to }
+}
 
 // Constrói o intervalo [from, to) no fuso UTC-3 (horário de Brasília).
 //
@@ -236,6 +262,10 @@ export default function AtendimentosPage() {
   const [soUnidos, setSoUnidos] = useState(false)
   const [search, setSearch] = useState('')
   const [searchDebounced, setSearchDebounced] = useState('')
+  // Preset de período (Hoje, 7/15/30 dias, Todos, Personalizado). Quando
+  // muda, atualiza fromDate/toDate automaticamente. 'custom' libera os
+  // inputs De/Até pra edição manual.
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('todos')
   const [fromDate, setFromDate] = useState('')
   // Data final do período. Vazio = filtra apenas pelo dia em `fromDate`.
   // Quando preenchido e diferente de `fromDate`, vira intervalo e o filtro
@@ -243,6 +273,21 @@ export default function AtendimentosPage() {
   const [toDate, setToDate] = useState('')
   const [hourFilter, setHourFilter] = useState<'all' | string>('all')
   const [sentimentoFilter, setSentimentoFilter] = useState<SentimentoFilter>('all')
+
+  // Aplica um preset de período. Para 'custom', mantém as datas atuais
+  // (apenas habilita a edição manual). Para os demais, calcula e seta.
+  const handlePresetChange = useCallback((preset: PeriodPreset) => {
+    setPeriodPreset(preset)
+    const range = resolvePreset(preset)
+    if (range) {
+      setFromDate(range.from)
+      setToDate(range.to)
+      // Em período de vários dias, hour não se aplica.
+      if (range.from && range.to && range.from !== range.to) {
+        setHourFilter('all')
+      }
+    }
+  }, [])
 
   // Paginação
   const [page, setPage] = useState(1)
@@ -548,29 +593,53 @@ export default function AtendimentosPage() {
           <option value="negativo">Negativo</option>
         </select>
 
-        {/* Período: De / Até. Se "Até" estiver vazio, filtra só pelo dia
-            em "De". Se ambos forem iguais, comporta-se igual antes (com
-            filtro de hora habilitado). Se forem diferentes, vira intervalo
-            e a hora é ignorada/desabilitada. */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-muted">De</span>
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark]"
-          />
-          <span className="text-[10px] uppercase tracking-wider text-muted">Até</span>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            disabled={!fromDate}
-            title={!fromDate ? 'Escolha a data inicial primeiro' : 'Data final do período'}
-            min={fromDate || undefined}
-            className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-40 disabled:cursor-not-allowed [color-scheme:dark]"
-          />
-        </div>
+        {/* Preset de período. Define rapidamente o intervalo De/Até.
+            "Personalizado" libera os inputs abaixo pra edição manual. */}
+        <select
+          value={periodPreset}
+          onChange={(e) => handlePresetChange(e.target.value as PeriodPreset)}
+          title="Período pré-definido"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
+        >
+          <option value="todos">Todo o período</option>
+          <option value="hoje">Hoje</option>
+          <option value="7d">Últimos 7 dias</option>
+          <option value="15d">Últimos 15 dias</option>
+          <option value="30d">Últimos 30 dias</option>
+          <option value="custom">Personalizado</option>
+        </select>
+
+        {/* De / Até — só aparece quando há período selecionado. Editável
+            apenas no modo "Personalizado"; nos demais mostra (read-only) o
+            range resolvido pelo preset. */}
+        {periodPreset !== 'todos' && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wider text-muted">De</span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              disabled={periodPreset !== 'custom'}
+              className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-60 disabled:cursor-not-allowed [color-scheme:dark]"
+            />
+            <span className="text-[10px] uppercase tracking-wider text-muted">Até</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              disabled={periodPreset !== 'custom' || !fromDate}
+              title={
+                periodPreset !== 'custom'
+                  ? 'Selecione "Personalizado" pra editar'
+                  : !fromDate
+                    ? 'Escolha a data inicial primeiro'
+                    : 'Data final do período'
+              }
+              min={fromDate || undefined}
+              className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-60 disabled:cursor-not-allowed [color-scheme:dark]"
+            />
+          </div>
+        )}
 
         {(() => {
           const isPeriodo = !!toDate && toDate !== fromDate
@@ -602,10 +671,11 @@ export default function AtendimentosPage() {
           )
         })()}
 
-        {(fromDate || toDate) && (
+        {periodPreset !== 'todos' && (
           <button
             type="button"
             onClick={() => {
+              setPeriodPreset('todos')
               setFromDate('')
               setToDate('')
               setHourFilter('all')

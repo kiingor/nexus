@@ -5,6 +5,7 @@ import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { Spinner } from '@/components/ui/Spinner'
 import { AtendimentosList } from '@/components/atendimentos/AtendimentosList'
 import { AtendimentoDetailModal } from '@/components/atendimentos/AtendimentoDetailModal'
+import { AtendimentosTabs } from '@/components/atendimentos/AtendimentosTabs'
 import Link from 'next/link'
 import {
   Headphones,
@@ -163,7 +164,8 @@ type DestinoFilter = 'all' | 'servicedesk' | 'financeiro'
 type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
 type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
 // Presets de período. 'custom' libera os inputs De/Até pro usuário editar.
-type PeriodPreset = 'todos' | 'hoje' | '7d' | '15d' | '30d' | 'custom'
+// 'mes' = últimos 30 dias (renomeado de '30d' por critério de aceitação).
+type PeriodPreset = 'todos' | 'hoje' | '3d' | '7d' | '15d' | 'mes' | 'custom'
 
 // Converte um Date local pra string YYYY-MM-DD (formato esperado pelo input
 // type="date"). Usa componentes locais — NÃO toISOString — pra evitar drift
@@ -183,7 +185,8 @@ function resolvePreset(preset: PeriodPreset): { from: string; to: string } | nul
   const today = new Date()
   const to = toLocalDateStr(today)
   if (preset === 'hoje') return { from: to, to }
-  const daysBack = preset === '7d' ? 6 : preset === '15d' ? 14 : 29 // '30d'
+  const daysBack =
+    preset === '3d' ? 2 : preset === '7d' ? 6 : preset === '15d' ? 14 : 29 // 'mes'
   const start = new Date(today)
   start.setDate(start.getDate() - daysBack)
   return { from: toLocalDateStr(start), to }
@@ -487,8 +490,9 @@ export default function AtendimentosPage() {
       <Breadcrumb items={[{ label: 'Dashboard', href: '/' }, { label: 'Atendimentos' }]} />
 
       <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
-        <div>
+        <div className="flex items-center gap-4">
           <h1 className="text-3xl font-display font-bold text-primary">Atendimentos</h1>
+          <AtendimentosTabs />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -603,9 +607,10 @@ export default function AtendimentosPage() {
         >
           <option value="todos">Todo o período</option>
           <option value="hoje">Hoje</option>
+          <option value="3d">Últimos 3 dias</option>
           <option value="7d">Últimos 7 dias</option>
           <option value="15d">Últimos 15 dias</option>
-          <option value="30d">Últimos 30 dias</option>
+          <option value="mes">Último mês</option>
           <option value="custom">Personalizado</option>
         </select>
 

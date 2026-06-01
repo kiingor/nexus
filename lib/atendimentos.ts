@@ -142,6 +142,79 @@ export const MOTIVO_CATEGORIES = [
 
 export type MotivoCategoria = (typeof MOTIVO_CATEGORIES)[number]
 
+// Lista de palavras que JAMAIS devem ser confundidas com nome próprio.
+// Usada pelo detector de "Falar com Técnico Específico" — se a palavra
+// após o gatilho ("falar com", "passa pra", "atendido por") for uma
+// dessas, a frase é IGNORADA. Cobre artigos, pronomes, funções comuns
+// e papéis genéricos.
+const NOT_A_NAME_WORD =
+  '(?:um|uma|o|a|outr[oa]|outr[oa]s' +
+  // pronomes / referências
+  '|mim|eu|voc[eê]|algu[eé]m|ningu[eé]m|qualquer|isso|isto|aquilo|ele|ela|eles|elas' +
+  '|meu|minha|nossos?|nossas?|seu|sua|quem' +
+  // funções / papéis
+  '|suporte|equipe|atendente|humano|t[eé]cnico|t[eé]cnicos|supervisor|gerente' +
+  '|pessoa|atendimento|setor|departamento|servi[çc]o|n[ií]vel' +
+  '|funcion[aá]ri[oa]|operador[a]?|consultor[a]?|profissional|especialista' +
+  '|chefe|dono|dona|vendedor[a]?|secret[aá]ri[oa]|recep[çc][aã]o' +
+  '|comprador|fornecedor|advogad[oa]|diretor[a]?|propriet[aá]ri[oa]|patr[aã]o|patroa' +
+  // negações de IA
+  '|rob[oô]|bot|ia|m[aá]quina' +
+  // advérbios / posição
+  '|pr[oó]xim[oa]|aqui|a[ií]|ali|mais|menos|geral|agora|depois|antes|cara|gente' +
+  ')'
+
+// O "X" capturado precisa ser uma palavra que NÃO esteja na stoplist
+// pra contar como nome próprio. Sem skip de palavra intermediária — se
+// um genérico ("técnico", "suporte", "alguém") aparecer logo após o
+// gatilho, o regex falha (que é o desejado). Trade-off: não pega
+// "passa pra a diretora Maria" (Maria depois de uma função), mas evita
+// pegar "falar com técnico não consegue" → "não" como nome.
+// Min 4 chars filtra typos curtos comuns ("ate" de "atendente"), preposições
+// ocasionais e ruído. Nomes brasileiros de 2-3 chars (Zé, Ed) ficam fora —
+// trade-off aceitável; o universo desses casos é muito pequeno.
+const NAME_LOOKAHEAD = '(?!' + NOT_A_NAME_WORD + '\\b)([a-zà-ÿ]{4,})\\b'
+const OPT_ARTICLE = '(?:o\\s+|a\\s+|um\\s+|uma\\s+)?'
+
+// "com" pode aparecer abreviado como "cm" no WhatsApp.
+const COM_OR_CM = '(?:com|cm)'
+
+const RE_FALAR_COM_NOME = new RegExp(
+  '\\bfalar\\s+' + COM_OR_CM + '\\s+' + OPT_ARTICLE + NAME_LOOKAHEAD,
+  'i'
+)
+const RE_TRANSFER_NOME = new RegExp(
+  '\\b(?:passa[r]?|passe|chama[r]?|transfere|transfira|transferir|encaminha[r]?)' +
+  '\\s+(?:pra|pro|para)\\s+' +
+  OPT_ARTICLE +
+  NAME_LOOKAHEAD,
+  'i'
+)
+const RE_ATENDIDO_POR_NOME = new RegExp(
+  '\\batendido\\s+por\\s+' + OPT_ARTICLE + NAME_LOOKAHEAD,
+  'i'
+)
+const RE_FALA_COM_NOME = new RegExp(
+  '\\bfala\\s+' + COM_OR_CM + '\\s+' + OPT_ARTICLE + NAME_LOOKAHEAD,
+  'i'
+)
+// "minha conversa com X" / "atendimento com X" — referência a atendente
+// anterior, sinal de pedido por continuidade com pessoa específica.
+const RE_CONVERSA_COM_NOME = new RegExp(
+  '\\b(?:conversa|atendimento|conta(?:to|te))\\s+' + COM_OR_CM + '\\s+' + OPT_ARTICLE + NAME_LOOKAHEAD,
+  'i'
+)
+
+function containsNamedPersonRequest(text: string): boolean {
+  return (
+    RE_FALAR_COM_NOME.test(text) ||
+    RE_TRANSFER_NOME.test(text) ||
+    RE_ATENDIDO_POR_NOME.test(text) ||
+    RE_FALA_COM_NOME.test(text) ||
+    RE_CONVERSA_COM_NOME.test(text)
+  )
+}
+
 // Extrai somente as falas do CLIENTE da transcrição (+ problema_relatado,
 // que já é um resumo do problema do cliente). Usado pelos patterns de
 // "Falar com Técnico Específico" pra evitar falsos positivos vindos de
@@ -202,49 +275,18 @@ export function classifyMotivo(input: {
   if (/carta de correção|\bcc-?e\b/.test(t)) return 'Carta de Correção'
   if (/certificado digital|certificado.*a[13]|\ba1\b|\ba3\b|expir.*certificado/.test(t)) return 'Certificado Digital'
 
-  // ── Pedido explícito de atendimento humano / pessoa específica ────
-  // Vem cedo porque é uma INTENÇÃO de roteamento — sobrepõe o tópico
-  // mencionado de passagem (ex: "boleto vencido, mas quero falar com o Beto").
+  // ── Pedido com NOME PRÓPRIO de pessoa ─────────────────────────────
+  // Categoria ativa SÓ quando o cliente cita um nome de pessoa específica
+  // (ex: "passa pra Beto", "quero falar com Arthur", "fala com a Maria").
+  // Pedidos genéricos ("quero falar com técnico", "preciso de suporte",
+  // "não quero robô") NÃO entram aqui — só pra uma categoria de roteamento
+  // nominal, conforme decisão do usuário.
   //
-  // Todos os patterns abaixo rodam sobre `ct` (texto SOMENTE do cliente
-  // extraído da transcrição) — assim podemos usar padrões agressivos como
-  // "passa pra fulano" / "chama o beto" sem pegar o bot dizendo "vou te
-  // passar pra um técnico especialista" no fechamento.
-  if (
-    // "quero/queria/gostaria/preciso/precisamos/necessito falar com..."
-    /\b(quero|queria|gostaria\s+de|preciso|precisamos|necessito)\s+falar\s+com\b/.test(ct) ||
-    // "tô/to/estou/estamos precisando (falar com|de)..."
-    /\b(t[ôo]|estou|estamos)\s+precisando\s+(falar\s+com|de\s+(um|uma)?\s*(suporte|atendente|humano|t[eé]cnico|gerente|supervisor|pessoa))\b/.test(ct) ||
-    // "quero/preciso (um|uma) atendente/humano/técnico/supervisor/gerente"
-    /\b(quero|queria|preciso|preciso\s+de|necessito\s+de)\s+(um|uma)\s+(humano|atendente|pessoa|t[eé]cnico|supervisor|gerente)\b/.test(ct) ||
-    // "posso/poderia falar com o/a..."
-    /\b(posso|poderia)\s+falar\s+com\s+(o|a|um|uma)\b/.test(ct) ||
-    // "deixa eu/me deixa falar com..."
-    /\b(deixa\s+eu|me\s+deixa)\s+falar\s+com\b/.test(ct) ||
-    // "passa pra/pro X" — Y pode ser nome próprio (fulano, beto, maria) ou
-    // função genérica. Agora seguro porque ct é só fala do cliente.
-    /\b(passa|passe|passar|transfere|transfira|transferir|chama|chamar|encaminha|encaminhar)\s+(pra|pro|para)\b/.test(ct) ||
-    // "quero (ser) atendido por humano/pessoa/atendente"
-    /\bquero\s+(ser\s+)?atendido\s+por\s+(um\s+|uma\s+)?(humano|pessoa|atendente)/.test(ct) ||
-    // "falar com o suporte/equipe/atendente/técnico/humano/gerente/supervisor"
-    /\bfalar\s+com\s+(o|a|um|uma)\s+(suporte|equipe|atendente|t[eé]cnico|humano|gerente|supervisor)\b/.test(ct) ||
-    // "solicito X" — verbo praticamente exclusivo do cliente em primeira pessoa
-    /\bsolicito\s+(que\s+|um\s+|uma\s+)?(atendimento|transfer[eê]ncia|acesso\s+remoto|t[eé]cnico|humano|atendente|suporte)\b/.test(ct) ||
-    // Acesso remoto: agora seguro pq ct é só fala do cliente
-    /\b(acesso\s+remoto|anydesk|teamviewer)\b/.test(ct) ||
-    // Recusa explícita de IA
-    /\b(n[aã]o)\s+quero\s+(falar\s+com\s+)?(rob[oô]|bot|\bia\b|m[aá]quina)\b/.test(ct) ||
-    /\b(odeio|cansei|chega)\s+(de\s+)?(rob[oô]|bot|\bia\b)/.test(ct) ||
-    // Pedido de hierarquia
-    /\bseu\s+supervisor\b/.test(ct) ||
-    // Marcadores de "humano de verdade"
-    /\batendente\s+(real|humano|de\s+verdade)\b/.test(ct) ||
-    /\bpessoa\s+(real|de\s+verdade)\b/.test(ct) ||
-    // "alguém da equipe / do suporte"
-    /\balgu[eé]m\s+(da\s+equipe|do\s+suporte|do\s+atendimento)\b/.test(ct) ||
-    // "fala com fulano" / "fala com o beto" — versão imperativa curta
-    /\bfala\s+com\s+(o|a)\s+\w+/.test(ct)
-  ) return 'Falar com Técnico Específico'
+  // Estratégia: lookahead negativo após o gatilho. Se a palavra que vem
+  // depois de "falar com" / "passa pra" / "atendido por" + (artigo)? for
+  // um termo GENÉRICO (técnico, suporte, humano, etc.), NÃO conta.
+  // Qualquer outra palavra é presumida nome próprio.
+  if (containsNamedPersonRequest(ct)) return 'Falar com Técnico Específico'
 
   // ── NF-e / SAT / Fiscal ───────────────────────────────────────────
   if (/nfc-?e|nfce/.test(t)) return 'NFC-e'

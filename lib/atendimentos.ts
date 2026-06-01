@@ -90,6 +90,8 @@ export function parseTranscricao(
 // A ordem aqui NÃO importa pra runtime, mas a ORDEM dos checks no
 // `classifyMotivo` SIM — vai do mais específico ao mais geral.
 export const MOTIVO_CATEGORIES = [
+  // Solicitação de roteamento (cliente pediu humano específico)
+  'Falar com Técnico Específico',
   // NF-e / SAT / Fiscal
   'NF-e Rejeitada',
   'Erro Emissão NF-e',
@@ -173,6 +175,30 @@ export function classifyMotivo(input: {
   if (/\berro\s*337\b|rejeição\s*337|\b337\b/.test(t)) return 'Erro 337 (Boleto)'
   if (/carta de correção|\bcc-?e\b/.test(t)) return 'Carta de Correção'
   if (/certificado digital|certificado.*a[13]|\ba1\b|\ba3\b|expir.*certificado/.test(t)) return 'Certificado Digital'
+
+  // ── Pedido explícito de atendimento humano / pessoa específica ────
+  // Vem cedo porque é uma INTENÇÃO de roteamento — sobrepõe o tópico
+  // mencionado de passagem (ex: "boleto vencido, mas quero falar com o Beto").
+  //
+  // IMPORTANTE: patterns como "passa pra um X" ou "chama um técnico" são
+  // ditos pelo PRÓPRIO BOT no fechamento ("vou te passar pra um
+  // especialista"), então não entram aqui pra não inflar a categoria com
+  // falsos positivos. Mantemos só patterns que tipicamente só o cliente
+  // usa em primeira pessoa.
+  if (
+    /\bquero\s+(um|uma)\s+(humano|atendente|pessoa|t[eé]cnico|supervisor|gerente)\b/.test(t) ||
+    /\bquero\s+falar\s+com\s+(o|a)\s+\w+/.test(t) ||       // "quero falar com o Beto" / "a Maria"
+    /\bposso\s+falar\s+com\s+(o|a)\s+\w+/.test(t) ||
+    /\bgostaria\s+de\s+falar\s+com\s+(o|a)\s+\w+/.test(t) ||
+    /\bdeixa\s+eu\s+falar\s+com\b/.test(t) ||
+    /\bme\s+(passa|passe|transfere|transfira)\s+(pra|pro|para)\b/.test(t) ||
+    /\bquero\s+(ser\s+)?atendido\s+por\s+(um\s+|uma\s+)?(humano|pessoa|atendente)/.test(t) ||
+    /\b(n[aã]o)\s+quero\s+(falar\s+com\s+)?(rob[oô]|bot|\bia\b|m[aá]quina)\b/.test(t) ||
+    /\b(odeio|cansei|chega)\s+(de\s+)?(rob[oô]|bot|\bia\b)/.test(t) ||
+    /\bseu\s+supervisor\b/.test(t) ||
+    /\batendente\s+(real|humano|de\s+verdade)\b/.test(t) ||
+    /\bpessoa\s+(real|de\s+verdade)\b/.test(t)
+  ) return 'Falar com Técnico Específico'
 
   // ── NF-e / SAT / Fiscal ───────────────────────────────────────────
   if (/nfc-?e|nfce/.test(t)) return 'NFC-e'

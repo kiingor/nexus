@@ -185,19 +185,48 @@ export function classifyMotivo(input: {
   // especialista"), então não entram aqui pra não inflar a categoria com
   // falsos positivos. Mantemos só patterns que tipicamente só o cliente
   // usa em primeira pessoa.
+  //
+  // Variantes verbais cobertas: "quero", "queria", "gostaria", "preciso",
+  // "precisamos", "necessito", "tô precisando", "estou precisando",
+  // "estamos precisando", "solicito".
+  // Alvos cobertos: nome próprio ("o Beto"), funções genéricas (suporte,
+  // técnico, atendente, humano, supervisor, gerente, pessoa), negação de
+  // IA ("não quero robô", "cansei desse bot"), pedido de acesso remoto
+  // (sinal forte de "preciso de humano técnico").
   if (
-    /\bquero\s+(um|uma)\s+(humano|atendente|pessoa|t[eé]cnico|supervisor|gerente)\b/.test(t) ||
-    /\bquero\s+falar\s+com\s+(o|a)\s+\w+/.test(t) ||       // "quero falar com o Beto" / "a Maria"
-    /\bposso\s+falar\s+com\s+(o|a)\s+\w+/.test(t) ||
-    /\bgostaria\s+de\s+falar\s+com\s+(o|a)\s+\w+/.test(t) ||
-    /\bdeixa\s+eu\s+falar\s+com\b/.test(t) ||
-    /\bme\s+(passa|passe|transfere|transfira)\s+(pra|pro|para)\b/.test(t) ||
+    // "quero/queria/gostaria/preciso/precisamos/necessito falar com..."
+    /\b(quero|queria|gostaria\s+de|preciso|precisamos|necessito)\s+falar\s+com\b/.test(t) ||
+    // "tô/to/estou/estamos precisando (falar com|de)..."
+    /\b(t[ôo]|estou|estamos)\s+precisando\s+(falar\s+com|de\s+(um|uma)?\s*(suporte|atendente|humano|t[eé]cnico|gerente|supervisor|pessoa))\b/.test(t) ||
+    // "quero/preciso (um|uma) atendente/humano/técnico/supervisor/gerente"
+    /\b(quero|queria|preciso|preciso\s+de|necessito\s+de)\s+(um|uma)\s+(humano|atendente|pessoa|t[eé]cnico|supervisor|gerente)\b/.test(t) ||
+    // "posso/poderia falar com o/a..."
+    /\b(posso|poderia)\s+falar\s+com\s+(o|a|um|uma)\b/.test(t) ||
+    // "deixa eu/me deixa falar com..."
+    /\b(deixa\s+eu|me\s+deixa)\s+falar\s+com\b/.test(t) ||
+    // "me passa pra...", "me transfere pra..."
+    /\bme\s+(passa|passe|transfere|transfira|encaminha|encaminhe)\s+(pra|pro|para)\b/.test(t) ||
+    // "quero (ser) atendido por humano/pessoa/atendente"
     /\bquero\s+(ser\s+)?atendido\s+por\s+(um\s+|uma\s+)?(humano|pessoa|atendente)/.test(t) ||
+    // "falar com o suporte/equipe/atendente/técnico/humano/gerente/supervisor"
+    // (sem "passa pra X" — o bot fala assim regularmente no fechamento)
+    /\bfalar\s+com\s+(o|a|um|uma)\s+(suporte|equipe|atendente|t[eé]cnico|humano|gerente|supervisor)\b/.test(t) ||
+    // "solicito X" — verbo praticamente exclusivo do cliente em primeira pessoa
+    /\bsolicito\s+(que\s+|um\s+|uma\s+)?(atendimento|transfer[eê]ncia|acesso\s+remoto|t[eé]cnico|humano|atendente|suporte)\b/.test(t) ||
+    // "preciso de acesso remoto" / "quero acesso remoto" — explícito do cliente
+    // (não captura "acesso remoto" sozinho porque o bot pede o anydesk
+    // no fechamento e isso inflaria a categoria com falso positivo)
+    /\b(quero|queria|preciso|preciso\s+de|gostaria\s+de|solicito)\s+(um\s+)?(acesso\s+remoto|anydesk|teamviewer)\b/.test(t) ||
+    // Recusa explícita de IA
     /\b(n[aã]o)\s+quero\s+(falar\s+com\s+)?(rob[oô]|bot|\bia\b|m[aá]quina)\b/.test(t) ||
     /\b(odeio|cansei|chega)\s+(de\s+)?(rob[oô]|bot|\bia\b)/.test(t) ||
+    // Pedido de hierarquia
     /\bseu\s+supervisor\b/.test(t) ||
+    // Marcadores de "humano de verdade"
     /\batendente\s+(real|humano|de\s+verdade)\b/.test(t) ||
-    /\bpessoa\s+(real|de\s+verdade)\b/.test(t)
+    /\bpessoa\s+(real|de\s+verdade)\b/.test(t) ||
+    // "alguém da equipe / do suporte"
+    /\balgu[eé]m\s+(da\s+equipe|do\s+suporte|do\s+atendimento)\b/.test(t)
   ) return 'Falar com Técnico Específico'
 
   // ── NF-e / SAT / Fiscal ───────────────────────────────────────────

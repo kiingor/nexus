@@ -768,6 +768,16 @@ export default function AtendimentosPage() {
         loadingAvaliacoes={loadingAvaliacoes}
         group={selectedGroup}
         onSelectRecord={openDetail}
+        onValidationSaved={(updated) => {
+          // Atualiza o registro selecionado, o grupo de unidos e a lista
+          // global, pra que o chip "Validado" apareça/desapareça sem
+          // precisar de refetch.
+          setSelected(updated)
+          setSelectedGroup((prev) =>
+            prev.map((r) => (r.id === updated.id ? updated : r))
+          )
+          setRecords((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+        }}
       />
     </div>
   )

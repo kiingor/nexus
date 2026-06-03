@@ -1,6 +1,6 @@
 'use client'
 
-import { Building2, Calendar, Layers, MessageCircle, Monitor, Phone, PhoneCall, Star } from 'lucide-react'
+import { Building2, Calendar, Layers, MessageCircle, Monitor, Phone, PhoneCall, ShieldCheck, Star } from 'lucide-react'
 import type { AtendimentoRecord } from '@/lib/types'
 
 // `mergedCount`/`mergedIds` são opcionais — vêm do agrupamento client-side
@@ -217,6 +217,19 @@ export function AtendimentosList({ records, onSelect }: Props) {
                         >
                           <Layers size={10} />
                           +{r.mergedCount - 1} unidos
+                        </span>
+                      )}
+                      {r.validado && (
+                        <span
+                          title={
+                            r.validacao_comentario
+                              ? `Validado · ${r.validacao_comentario}`
+                              : 'Atendimento validado'
+                          }
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border bg-green-500/10 border-green-500/30 text-green-400 shrink-0 whitespace-nowrap"
+                        >
+                          <ShieldCheck size={10} />
+                          Validado
                         </span>
                       )}
                     </div>

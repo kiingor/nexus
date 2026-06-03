@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { GlassModal } from '@/components/ui/GlassModal'
 import { Spinner } from '@/components/ui/Spinner'
-import { Building2, Phone, MessageSquare, Star, Monitor, Calendar, DollarSign, Smile, Copy, Check } from 'lucide-react'
+import { Building2, Phone, MessageSquare, Star, Monitor, Calendar, DollarSign, Smile, Copy, Check, ShieldCheck, X } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
 import { formatCusto, formatDuracao, parseTranscricao, sentimentoBadge } from '@/lib/atendimentos'
+import { getSupabaseClient } from '@/lib/supabase/client'
 
 interface Props {
   record: AtendimentoRecord | null
@@ -25,6 +26,11 @@ interface Props {
    * registro selecionado.
    */
   onSelectRecord?: (record: AtendimentoRecord) => void
+  /**
+   * Chamado após uma validação ser salva, com o atendimento atualizado.
+   * Permite a página refletir validado/comentário sem refetch da lista.
+   */
+  onValidationSaved?: (updated: AtendimentoRecord) => void
 }
 
 function fmt(iso: string | null) {
@@ -45,6 +51,7 @@ export function AtendimentoDetailModal({
   loadingAvaliacoes,
   group,
   onSelectRecord,
+  onValidationSaved,
 }: Props) {
   if (!record) return null
 
@@ -88,6 +95,8 @@ export function AtendimentoDetailModal({
             })}
           </div>
         )}
+
+        <ValidationSection record={detail} onSaved={onValidationSaved} />
 
         {/* Header — só faz sentido em ligação (chat não tem início/fim/duração/custo) */}
         {!isChat && (
@@ -223,6 +232,179 @@ export function AtendimentoDetailModal({
         </Section>
       </div>
     </GlassModal>
+  )
+}
+
+// Bloco de validação humana. Mostra três estados:
+//  1) Não validado: checkbox + textarea + botão "Salvar validação"
+//  2) Em edição (já validado, usuário clicou Editar): edição inline +
+//     opção de "Remover validação"
+//  3) Validado: cartão verde com quem/quando + comentário + ação Editar
+//
+// O PATCH é otimista: salva primeiro, repercute via onSaved pra página
+// refletir sem refetch. Em falha, mostra erro inline e mantém edição.
+function ValidationSection({
+  record,
+  onSaved,
+}: {
+  record: AtendimentoRecord
+  onSaved?: (updated: AtendimentoRecord) => void
+}) {
+  const isValidated = !!record.validado
+  // Modo edição: liga quando ainda não validado, ou quando clica em "Editar"
+  const [editing, setEditing] = useState(!isValidated)
+  const [comentario, setComentario] = useState(record.validacao_comentario ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+
+  // Carrega email do usuário autenticado pra preencher `validado_por`.
+  useEffect(() => {
+    let canceled = false
+    getSupabaseClient().auth.getSession().then(({ data }) => {
+      if (!canceled) setUserEmail(data.session?.user.email ?? null)
+    }).catch(() => { /* ignore */ })
+    return () => { canceled = true }
+  }, [])
+
+  // Quando o record muda (troca de aba ou refresh), re-sincroniza estado.
+  useEffect(() => {
+    setComentario(record.validacao_comentario ?? '')
+    setEditing(!record.validado)
+    setError(null)
+  }, [record.id, record.validado, record.validacao_comentario])
+
+  async function save(novoValidado: boolean) {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/atendimentos/${record.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          validado: novoValidado,
+          validado_por: userEmail ?? undefined,
+          validacao_comentario: novoValidado ? comentario.trim() || null : null,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        throw new Error(json?.error ?? 'Falha ao salvar validação')
+      }
+      onSaved?.(json.atendimento as AtendimentoRecord)
+      setEditing(!novoValidado)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro inesperado')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Card verde: já validado e não está em edição.
+  if (isValidated && !editing) {
+    return (
+      <div className="glass border-green-500/30 bg-green-500/5 p-4 rounded-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <ShieldCheck size={18} className="text-green-400 mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-green-300">
+                Atendimento validado
+              </p>
+              <p className="text-[11px] text-muted mt-0.5">
+                {record.validado_por ? <>por <span className="text-secondary">{record.validado_por}</span></> : 'sem responsável registrado'}
+                {record.validado_em && (
+                  <>
+                    {' · '}
+                    <span className="text-secondary">{fmt(record.validado_em)}</span>
+                  </>
+                )}
+              </p>
+              {record.validacao_comentario && (
+                <p className="mt-2 text-sm text-primary whitespace-pre-wrap">
+                  {record.validacao_comentario}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="text-xs px-2.5 py-1.5 rounded-lg border border-glass-border bg-glass text-muted hover:text-primary hover:border-orange-500/30 transition-colors cursor-pointer"
+            >
+              Editar
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => save(false)}
+              title="Remover validação"
+              className="text-xs px-2 py-1.5 rounded-lg border border-glass-border bg-glass text-muted hover:text-red-400 hover:border-red-500/30 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Form de validação (ou edição). Default quando ainda não validado.
+  return (
+    <div className="glass p-4 rounded-2xl">
+      <div className="flex items-center gap-2 mb-3">
+        <ShieldCheck size={16} className="text-orange-400" />
+        <h3 className="text-xs uppercase tracking-wider text-muted">
+          {isValidated ? 'Editando validação' : 'Validação'}
+        </h3>
+      </div>
+      <label className="block text-[11px] text-secondary mb-1.5">
+        Comentário <span className="text-muted">(opcional — observações sobre a validação)</span>
+      </label>
+      <textarea
+        value={comentario}
+        onChange={(e) => setComentario(e.target.value)}
+        rows={3}
+        placeholder="Ex: Resposta da IA foi adequada, sem necessidade de retrabalho."
+        className="w-full px-3 py-2 rounded-xl bg-base border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50 placeholder:text-muted resize-none"
+      />
+      {error && (
+        <p className="mt-2 text-xs text-red-400 bg-red-500/10 border border-red-500/25 rounded-lg px-3 py-2">
+          {error}
+        </p>
+      )}
+      <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[11px] text-muted">
+          {userEmail ? <>Validando como <span className="text-secondary">{userEmail}</span></> : 'Sem usuário autenticado — campo "Validado por" ficará vazio'}
+        </span>
+        <div className="flex items-center gap-2">
+          {isValidated && (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                setEditing(false)
+                setComentario(record.validacao_comentario ?? '')
+                setError(null)
+              }}
+              className="text-xs px-3 py-1.5 rounded-lg border border-glass-border bg-glass text-muted hover:text-primary transition-colors cursor-pointer disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => save(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-green-500/15 border border-green-500/40 text-green-300 hover:bg-green-500/25 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            {saving ? <Spinner size="sm" /> : <Check size={13} />}
+            {saving ? 'Salvando…' : isValidated ? 'Salvar alterações' : 'Marcar como validado'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 

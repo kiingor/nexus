@@ -218,6 +218,12 @@ export interface AtendimentoRecord {
   pdv: string | null
   // Nota do atendimento resolvido (1-5). NULL quando ainda não avaliado.
   nota: number | null
+  // Validação humana: preenchido quando um responsável marca o atendimento
+  // como "validado" pelo modal de detalhes.
+  validado: boolean | null
+  validado_em: string | null      // ISO timestamp
+  validado_por: string | null     // email do responsável (vem do auth)
+  validacao_comentario: string | null
 }
 
 export interface AvaliacaoAtendimentoRecord {

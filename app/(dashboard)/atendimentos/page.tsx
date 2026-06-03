@@ -160,7 +160,7 @@ const STATS_EMPTY: StatsResponse = {
 }
 
 type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 'interrompida'
-type DestinoFilter = 'all' | 'servicedesk' | 'financeiro'
+type DestinoFilter = 'all' | 'servicedesk' | 'financeiro' | 'comercial' | 'ouvidoria'
 type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
 type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
 // Presets de período. 'custom' libera os inputs De/Até pro usuário editar.
@@ -573,6 +573,8 @@ export default function AtendimentosPage() {
           <option value="all">Todos destinos</option>
           <option value="servicedesk">ServiceDesk</option>
           <option value="financeiro">Financeiro</option>
+          <option value="comercial">Comercial</option>
+          <option value="ouvidoria">Ouvidoria</option>
         </select>
 
         <select

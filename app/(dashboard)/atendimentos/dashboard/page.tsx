@@ -18,7 +18,7 @@ type PeriodPreset = 'todos' | 'hoje' | '3d' | '7d' | '15d' | 'mes' | 'custom'
 // Filtros espelhados da aba Lista — pra que o dashboard mostre agregação
 // sobre o MESMO conjunto que aparece na Lista.
 type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 'interrompida'
-type DestinoFilter = 'all' | 'servicedesk' | 'financeiro'
+type DestinoFilter = 'all' | 'servicedesk' | 'financeiro' | 'comercial' | 'ouvidoria'
 type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
 type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
 
@@ -218,6 +218,8 @@ export default function AtendimentosDashboardPage() {
           <option value="all">Todos destinos</option>
           <option value="servicedesk">ServiceDesk</option>
           <option value="financeiro">Financeiro</option>
+          <option value="comercial">Comercial</option>
+          <option value="ouvidoria">Ouvidoria</option>
         </select>
 
         <select

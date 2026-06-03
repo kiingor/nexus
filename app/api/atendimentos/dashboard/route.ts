@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
   const to = searchParams.get('to')
   // Aceita os MESMOS filtros que a aba "Lista" tem, pra que o dashboard
   // mostre agregações sobre o EXATO conjunto que aparece na Lista.
-  const destino = searchParams.get('destino')         // 'servicedesk' | 'financeiro' | null
+  const destino = searchParams.get('destino')         // 'servicedesk' | 'financeiro' | 'comercial' | 'ouvidoria' | null
   const status = searchParams.get('status')           // status_filter (ex: 'resolvida_ia')
   const tipoContato = searchParams.get('tipo_contato') // 'ligacao' | 'chat'
   const sentimento = searchParams.get('sentimento')   // 'positivo' | 'neutro' | 'negativo'
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
 
     if (from) q = q.gte('criado_em', from)
     if (to)   q = q.lt('criado_em', to)
-    if (destino === 'servicedesk' || destino === 'financeiro') q = q.eq('destino', destino)
+    if (destino === 'servicedesk' || destino === 'financeiro' || destino === 'comercial' || destino === 'ouvidoria') q = q.eq('destino', destino)
     if (status && status !== 'all') q = q.eq('status', status)
     if (tipoContato === 'ligacao' || tipoContato === 'chat') q = q.eq('tipo_contato', tipoContato)
     if (soComProblema) q = q.eq('problema_extraido->>tem_problema_extraivel', 'true')

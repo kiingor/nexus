@@ -63,6 +63,10 @@ function destinoBadge(destino: string | null): { label: string; cls: string } | 
     return { label: 'ServiceDesk', cls: 'bg-blue-500/10 border-blue-500/25 text-blue-400' }
   if (destino === 'financeiro')
     return { label: 'Financeiro', cls: 'bg-purple-500/10 border-purple-500/25 text-purple-400' }
+  if (destino === 'comercial')
+    return { label: 'Comercial', cls: 'bg-orange-500/10 border-orange-500/25 text-orange-400' }
+  if (destino === 'ouvidoria')
+    return { label: 'Ouvidoria', cls: 'bg-pink-500/10 border-pink-500/25 text-pink-400' }
   return { label: destino, cls: 'bg-glass border-glass-border text-muted' }
 }
 

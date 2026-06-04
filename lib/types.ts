@@ -224,6 +224,9 @@ export interface AtendimentoRecord {
   validado_em: string | null      // ISO timestamp
   validado_por: string | null     // email do responsável (vem do auth)
   validacao_comentario: string | null
+  // Sub-categoria do atendimento (preenchida pelo classificador AI do n8n).
+  // Ex: 'erro_337', 'boleto_mensalidade', 'suporte_geral', etc.
+  tipo_atendimento: string | null
 }
 
 export interface AvaliacaoAtendimentoRecord {

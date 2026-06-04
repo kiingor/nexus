@@ -161,7 +161,7 @@ export function VincularCenarioModal({
       <div className="space-y-4">
         {/* Texto fonte — editável */}
         <div>
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted mb-1.5">
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-secondary mb-1.5">
             <Pin size={12} />
             {sourceLabel}
           </div>
@@ -169,25 +169,25 @@ export function VincularCenarioModal({
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={mode === 'conversation' ? 8 : 3}
-            className="w-full px-3 py-2 rounded-xl bg-base border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50 placeholder:text-muted resize-y font-mono leading-relaxed"
+            className="w-full px-3 py-2 rounded-xl bg-base border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50 placeholder:text-secondary resize-y font-mono leading-relaxed"
           />
-          <p className="text-[10px] text-muted mt-1">{editHint}</p>
+          <p className="text-[10px] text-secondary mt-1">{editHint}</p>
         </div>
 
         {/* Busca */}
         <div>
-          <label className="block text-[11px] uppercase tracking-wider text-muted mb-1.5">
+          <label className="block text-[11px] uppercase tracking-wider text-secondary mb-1.5">
             Buscar cenário existente
           </label>
           <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Ex: cadastro de funcionário, emissão de NFC-e..."
-              className="w-full pl-9 pr-4 py-2 rounded-xl bg-base border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50 placeholder:text-muted"
+              className="w-full pl-9 pr-4 py-2 rounded-xl bg-base border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50 placeholder:text-secondary"
             />
           </div>
         </div>
@@ -197,7 +197,7 @@ export function VincularCenarioModal({
           {loading ? (
             <div className="flex justify-center py-6"><Spinner size="sm" /></div>
           ) : results.length === 0 ? (
-            <p className="text-xs text-muted text-center py-6">
+            <p className="text-xs text-secondary text-center py-6">
               Nenhum cenário encontrado{query ? ` para "${query}"` : ''}.
             </p>
           ) : (
@@ -220,7 +220,7 @@ export function VincularCenarioModal({
                     {isActive && <Check size={12} className="text-orange-400 shrink-0" />}
                     <p className="text-sm text-primary font-medium truncate">{it.title}</p>
                   </div>
-                  <p className="text-[11px] text-muted mt-0.5">
+                  <p className="text-[11px] text-secondary mt-0.5">
                     {productLabel} → {moduleLabel} · {it.type === 'instruction' ? 'Instrução' : 'Erro'}
                   </p>
                 </button>
@@ -241,7 +241,7 @@ export function VincularCenarioModal({
             href="/products"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-muted hover:text-primary underline underline-offset-2"
+            className="text-xs text-secondary hover:text-primary underline underline-offset-2"
           >
             Não achei: criar cenário ↗
           </a>
@@ -250,7 +250,7 @@ export function VincularCenarioModal({
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="text-sm px-3 py-1.5 rounded-lg border border-glass-border bg-glass text-muted hover:text-primary transition-colors cursor-pointer disabled:opacity-50"
+              className="text-sm px-3 py-1.5 rounded-lg border border-glass-border bg-glass text-secondary hover:text-primary transition-colors cursor-pointer disabled:opacity-50"
             >
               Cancelar
             </button>
@@ -266,7 +266,7 @@ export function VincularCenarioModal({
           </div>
         </div>
 
-        <p className="text-[10px] text-muted">
+        <p className="text-[10px] text-secondary">
           A frase será adicionada ao vector store (knowledge_embeddings) como exemplo do
           cenário escolhido. O agente IA passa a reconhecer variações similares
           automaticamente — sem mudanças no n8n.

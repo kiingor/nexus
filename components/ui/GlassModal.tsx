@@ -41,9 +41,13 @@ export function GlassModal({ open, onClose, title, children, className }: GlassM
       />
 
       {/* Modal */}
+      {/* Se o caller passou um max-w-* customizado no className, NÃO aplicamos
+          o default max-w-lg — senão as duas classes coexistem e o Tailwind
+          resolve uma delas de forma imprevisível. */}
       <div
         className={cn(
-          'relative w-full max-w-lg mx-4 p-6 animate-in fade-in zoom-in-95 duration-200 bg-surface/95 backdrop-blur-xl border border-glass-border rounded-2xl',
+          'relative w-full mx-4 p-6 animate-in fade-in zoom-in-95 duration-200 bg-surface/95 backdrop-blur-xl border border-glass-border rounded-2xl',
+          className?.includes('max-w-') ? null : 'max-w-lg',
           className
         )}
       >

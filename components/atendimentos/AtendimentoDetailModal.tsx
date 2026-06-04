@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react'
 import { GlassModal } from '@/components/ui/GlassModal'
 import { Spinner } from '@/components/ui/Spinner'
-import { Building2, Phone, MessageSquare, Star, Monitor, Calendar, DollarSign, Smile, Copy, Check, ShieldCheck, X, Pin, Trash2 } from 'lucide-react'
+import { Building2, Phone, MessageSquare, Star, Monitor, Calendar, DollarSign, Smile, Copy, Check, ShieldCheck, X, Pin, Trash2, Tag, MessageCircle, PhoneCall, Clock, FileText, Search, User } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
 import { formatCusto, formatDuracao, parseTranscricao, sentimentoBadge } from '@/lib/atendimentos'
+import { formatTipoAtendimento } from '@/lib/tipos-atendimento'
 import { getSupabaseClient } from '@/lib/supabase/client'
 import { VincularCenarioModal } from '@/components/atendimentos/VincularCenarioModal'
 
@@ -66,12 +67,20 @@ export function AtendimentoDetailModal({
   const hasTabs = Array.isArray(group) && group.length > 1
   const activeIndex = hasTabs ? group!.findIndex((r) => r.id === record.id) : -1
 
+  const sentimentoB = sentimentoBadge(detail.sentimento_cliente)
+  const tipoLabel = detail.tipo_atendimento ? formatTipoAtendimento(detail.tipo_atendimento) : null
+
   return (
-    <GlassModal open={open} onClose={onClose} title="Detalhes do Atendimento" className="max-w-4xl">
-      <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-2">
+    <GlassModal
+      open={open}
+      onClose={onClose}
+      title={`Detalhes do Atendimento #${detail.id}`}
+      className="max-w-6xl"
+    >
+      <div className="max-h-[82vh] overflow-y-auto pr-2 space-y-5">
         {hasTabs && (
-          <div className="flex items-center gap-1.5 flex-wrap border-b border-glass-border pb-3">
-            <span className="text-[10px] uppercase tracking-wider text-muted mr-2">
+          <div className="flex items-center gap-1.5 flex-wrap pb-1">
+            <span className="text-[10px] uppercase tracking-wider text-secondary mr-2">
               {group!.length} atendimentos unidos
             </span>
             {group!.map((r, idx) => {
@@ -80,13 +89,11 @@ export function AtendimentoDetailModal({
                 <button
                   key={r.id}
                   type="button"
-                  onClick={() => {
-                    if (!isActive && onSelectRecord) onSelectRecord(r)
-                  }}
+                  onClick={() => { if (!isActive && onSelectRecord) onSelectRecord(r) }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer whitespace-nowrap ${
                     isActive
                       ? 'bg-orange-500/15 border-orange-500/40 text-orange-300'
-                      : 'bg-glass border-glass-border text-muted hover:text-primary hover:border-orange-500/30'
+                      : 'bg-glass border-glass-border text-secondary hover:text-primary hover:border-orange-500/30'
                   }`}
                   title={`ID #${r.id}${r.data_hora_chegada ? ' · ' + fmt(r.data_hora_chegada) : ''}`}
                 >
@@ -97,127 +104,197 @@ export function AtendimentoDetailModal({
           </div>
         )}
 
-        <ValidationSection record={detail} onSaved={onValidationSaved} />
-        <ExamplesSection record={detail} />
-
-        {/* Header — só faz sentido em ligação (chat não tem início/fim/duração/custo) */}
-        {!isChat && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-            <Meta icon={<Calendar size={12} />} label="Início" value={fmt(detail.data_hora_chegada)} />
-            <Meta icon={<Calendar size={12} />} label="Fim" value={fmt(detail.data_hora_saida)} />
-            <Meta label="Duração" value={formatDuracao(detail.duracao_segundos)} />
-            <Meta icon={<DollarSign size={12} />} label="Custo" value={formatCusto(detail.custo_real)} />
-          </div>
-        )}
-
-        {/* Sentimento + ID Ligação — escondido em chat */}
-        {!isChat && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <div className="glass p-3">
-              <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted mb-1">
+        {/* ─── Status bar (header) ─────────────────────────────────────
+            Chips compactos com o status macro do atendimento. Dá ao
+            usuário uma visão de relance antes de entrar nos detalhes. */}
+        <div className="rounded-2xl border border-glass-border bg-gradient-to-br from-white/[0.03] to-white/[0.01] px-4 py-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {detail.validado && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-green-500/15 border-green-500/40 text-green-300">
+                <ShieldCheck size={12} />
+                Validado
+              </span>
+            )}
+            {detail.destino && (
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${destinoChipCls(detail.destino)}`}>
+                <Tag size={12} />
+                {capitalize(detail.destino)}
+              </span>
+            )}
+            {tipoLabel && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-orange-500/10 border-orange-500/30 text-orange-300">
+                <FileText size={12} />
+                {tipoLabel}
+              </span>
+            )}
+            {detail.tipo_contato && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-glass border-glass-border text-secondary">
+                {detail.tipo_contato === 'chat' ? <MessageCircle size={12} /> : <PhoneCall size={12} />}
+                {detail.tipo_contato === 'chat' ? 'Chat' : 'Ligação'}
+              </span>
+            )}
+            {sentimentoB && (
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border capitalize ${sentimentoB.cls}`}>
                 <Smile size={12} />
-                Sentimento do cliente
+                {sentimentoB.label}
+              </span>
+            )}
+            {detail.nota != null && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-yellow-500/10 border-yellow-500/30 text-yellow-300">
+                <Star size={12} className="fill-current" />
+                {detail.nota}/10
+              </span>
+            )}
+          </div>
+          {/* Métricas inline (só pra ligação — chat não tem essa info) */}
+          {!isChat && (
+            <div className="mt-3 pt-3 border-t border-glass-border/60 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <MetricInline icon={<Calendar size={11} />} label="Início" value={fmt(detail.data_hora_chegada)} />
+              <MetricInline icon={<Calendar size={11} />} label="Fim"    value={fmt(detail.data_hora_saida)} />
+              <MetricInline icon={<Clock size={11} />}    label="Duração" value={formatDuracao(detail.duracao_segundos)} />
+              <MetricInline icon={<DollarSign size={11} />} label="Custo" value={formatCusto(detail.custo_real)} />
+            </div>
+          )}
+        </div>
+
+        {/* ─── Body 2 colunas ─────────────────────────────────────────
+            Layout responsivo: 1 coluna em mobile, 2 colunas em lg+ (≥1024px).
+            Esquerda (40%): dados sobre o atendimento (read-only).
+            Direita (60%): transcrição (focal) + ações (validação, vincular). */}
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-5">
+          {/* ─── Coluna esquerda ─── */}
+          <div className="space-y-4">
+            <Section title="Cliente" icon={<User size={12} />}>
+              {/* Empresa em destaque — é a info que mais importa pro reviewer
+                  identificar "qual cliente é esse" antes de qualquer outra coisa. */}
+              <div className="mb-4 pb-4 border-b border-glass-border/40">
+                <div className="flex items-start gap-2">
+                  <Building2 size={18} className="text-orange-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-lg font-semibold text-primary leading-tight">
+                      {detail.nome_empresa || '—'}
+                    </p>
+                    {detail.cnpj && (
+                      <p className="text-xs text-secondary font-mono mt-1 tracking-wide">
+                        {detail.cnpj}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
-              {(() => {
-                const b = sentimentoBadge(detail.sentimento_cliente)
-                return b ? (
-                  <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${b.cls}`}
-                  >
-                    {b.label}
-                  </span>
+
+              {/* Demais contatos em lista vertical limpa — uma linha por campo,
+                  label à esquerda, valor à direita. Não trunca dados curtos
+                  como telefone/whatsapp. */}
+              <div className="space-y-2">
+                <ContactRow
+                  icon={<User size={12} />}
+                  label="Cliente"
+                  value={detail.cliente_nome}
+                />
+                <ContactRow
+                  icon={<Phone size={12} />}
+                  label="Telefone"
+                  value={detail.phone}
+                  mono
+                />
+                <ContactRow
+                  icon={<MessageSquare size={12} />}
+                  label="WhatsApp"
+                  value={detail.whatsapp_contato}
+                  mono
+                />
+                {!isChat && (
+                  <ContactRow
+                    icon={<Monitor size={12} />}
+                    label="AnyDesk"
+                    value={detail.numero_anydesk}
+                    mono
+                  />
+                )}
+              </div>
+
+              {!isChat && detail.id_ligacao && (
+                <div className="mt-3 pt-3 border-t border-glass-border/40">
+                  <IdLigacaoMeta value={detail.id_ligacao} />
+                </div>
+              )}
+            </Section>
+
+            <Section title="Problema" icon={<FileText size={12} />}>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider text-secondary">Relatado pela IA</span>
+                  <p className="text-primary mt-1 whitespace-pre-wrap leading-relaxed">{detail.problema_relatado || '—'}</p>
+                </div>
+                {detail.solucao_aplicada && (
+                  <div>
+                    <span className="text-[11px] uppercase tracking-wider text-secondary">Solução aplicada</span>
+                    <p className="text-primary mt-1 whitespace-pre-wrap leading-relaxed">{detail.solucao_aplicada}</p>
+                  </div>
+                )}
+              </div>
+            </Section>
+
+            {problema && (
+              <Section title="Análise Estruturada" icon={<Search size={12} />}>
+                {temProblema && problema.problema ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-sm">
+                    <Meta label="Categoria" value={problema.problema.categoria} />
+                    <Meta label="Módulo" value={problema.problema.modulo_afetado} />
+                    <Meta label="Frequência" value={problema.problema.frequencia} />
+                    <Meta label="Confiança" value={problema.confianca as string | null} />
+                    {problema.problema.descricao_tecnica && (
+                      <div className="sm:col-span-2">
+                        <span className="text-[11px] uppercase tracking-wider text-secondary">Descrição técnica</span>
+                        <p className="text-primary mt-1 whitespace-pre-wrap leading-relaxed">{problema.problema.descricao_tecnica}</p>
+                      </div>
+                    )}
+                    {problema.problema.mensagem_erro && (
+                      <div className="sm:col-span-2">
+                        <span className="text-[11px] uppercase tracking-wider text-secondary">Mensagem de erro</span>
+                        <p className="text-primary mt-1 whitespace-pre-wrap font-mono text-xs leading-relaxed">{problema.problema.mensagem_erro}</p>
+                      </div>
+                    )}
+                    {problema.problema.impacto_relatado && (
+                      <div className="sm:col-span-2">
+                        <span className="text-[11px] uppercase tracking-wider text-secondary">Impacto</span>
+                        <p className="text-primary mt-1 whitespace-pre-wrap leading-relaxed">{problema.problema.impacto_relatado}</p>
+                      </div>
+                    )}
+                  </div>
                 ) : (
-                  <p className="text-sm text-muted">—</p>
-                )
-              })()}
-            </div>
-            <IdLigacaoMeta value={detail.id_ligacao} />
-          </div>
-        )}
-
-        {/* Cliente — em chat oculta AnyDesk (não se aplica) */}
-        <Section title="Cliente">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <Meta icon={<Building2 size={12} />} label="Empresa" value={detail.nome_empresa} />
-            <Meta label="CNPJ" value={detail.cnpj} />
-            <Meta label="Cliente" value={detail.cliente_nome} />
-            <Meta icon={<Phone size={12} />} label="Telefone" value={detail.phone} />
-            <Meta icon={<MessageSquare size={12} />} label="WhatsApp" value={detail.whatsapp_contato} />
-            {!isChat && (
-              <Meta icon={<Monitor size={12} />} label="AnyDesk" value={detail.numero_anydesk} />
+                  <p className="text-sm text-secondary">
+                    Sem problema extraível
+                    {problema.motivo_descarte ? ` — ${problema.motivo_descarte}` : ''}
+                  </p>
+                )}
+              </Section>
             )}
           </div>
-        </Section>
 
-        {/* Problema */}
-        <Section title="Problema">
-          <div className="space-y-2 text-sm">
-            <div>
-              <span className="text-xs uppercase tracking-wider text-muted">Relatado pela IA</span>
-              <p className="text-primary mt-1">{detail.problema_relatado || '—'}</p>
-            </div>
-            {detail.solucao_aplicada && (
-              <div>
-                <span className="text-xs uppercase tracking-wider text-muted">Solução aplicada</span>
-                <p className="text-primary mt-1">{detail.solucao_aplicada}</p>
-              </div>
-            )}
+          {/* ─── Coluna direita ─── */}
+          <div className="space-y-4">
+            <TranscricaoBlock
+              formatada={detail.transcricao_formatada}
+              original={detail.transcricao}
+              isChat={isChat}
+              atendimentoId={detail.id}
+            />
+
+            <ValidationSection record={detail} onSaved={onValidationSaved} />
+            <ExamplesSection record={detail} />
           </div>
-        </Section>
+        </div>
 
-        {/* Problema extraído */}
-        {problema && (
-          <Section title="Análise Estruturada">
-            {temProblema && problema.problema ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                <Meta label="Categoria" value={problema.problema.categoria} />
-                <Meta label="Módulo" value={problema.problema.modulo_afetado} />
-                <Meta label="Frequência" value={problema.problema.frequencia} />
-                <Meta label="Confiança" value={problema.confianca as string | null} />
-                {problema.problema.descricao_tecnica && (
-                  <div className="md:col-span-2">
-                    <span className="text-xs uppercase tracking-wider text-muted">Descrição técnica</span>
-                    <p className="text-primary mt-1">{problema.problema.descricao_tecnica}</p>
-                  </div>
-                )}
-                {problema.problema.mensagem_erro && (
-                  <div className="md:col-span-2">
-                    <span className="text-xs uppercase tracking-wider text-muted">Mensagem de erro</span>
-                    <p className="text-primary mt-1">{problema.problema.mensagem_erro}</p>
-                  </div>
-                )}
-                {problema.problema.impacto_relatado && (
-                  <div className="md:col-span-2">
-                    <span className="text-xs uppercase tracking-wider text-muted">Impacto</span>
-                    <p className="text-primary mt-1">{problema.problema.impacto_relatado}</p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-muted">
-                Sem problema extraível
-                {problema.motivo_descarte ? ` — ${problema.motivo_descarte}` : ''}
-              </p>
-            )}
-          </Section>
-        )}
-
-        {/* Transcrição */}
-        <TranscricaoBlock
-          formatada={detail.transcricao_formatada}
-          original={detail.transcricao}
-          isChat={isChat}
-          atendimentoId={detail.id}
-        />
-
-        {/* Avaliações */}
-        <Section title="Avaliações do Cliente">
+        {/* ─── Rodapé full width: Avaliações ─── */}
+        <Section title="Avaliações do Cliente" icon={<Star size={12} />}>
           {loadingAvaliacoes ? (
             <div className="py-4 flex justify-center">
               <Spinner size="sm" />
             </div>
           ) : avaliacoes.length === 0 ? (
-            <p className="text-sm text-muted">Nenhuma avaliação registrada.</p>
+            <p className="text-sm text-secondary">Nenhuma avaliação registrada.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {avaliacoes.map((a) => (
@@ -225,9 +302,9 @@ export function AtendimentoDetailModal({
                   key={a.id}
                   className="flex items-center gap-2 px-3 py-2 rounded-xl bg-glass border border-glass-border"
                 >
-                  <Star size={14} className="text-yellow-400" />
+                  <Star size={14} className="text-yellow-400 fill-current" />
                   <span className="text-sm font-semibold text-primary">{a.nota ?? '—'}/5</span>
-                  <span className="text-xs text-muted">{fmt(a.criado_em)}</span>
+                  <span className="text-xs text-secondary">{fmt(a.criado_em)}</span>
                 </div>
               ))}
             </div>
@@ -235,6 +312,35 @@ export function AtendimentoDetailModal({
         </Section>
       </div>
     </GlassModal>
+  )
+}
+
+// Helpers de display
+function capitalize(s: string): string {
+  return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s
+}
+
+// Cor do chip de destino — mesma paleta da Lista pra consistência visual.
+function destinoChipCls(destino: string): string {
+  if (destino === 'servicedesk') return 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+  if (destino === 'financeiro')  return 'bg-purple-500/10 border-purple-500/30 text-purple-300'
+  if (destino === 'comercial')   return 'bg-orange-500/10 border-orange-500/30 text-orange-300'
+  if (destino === 'ouvidoria')   return 'bg-pink-500/10 border-pink-500/30 text-pink-300'
+  return 'bg-glass border-glass-border text-secondary'
+}
+
+// Métrica inline pra status bar (mais compacta que o card Meta).
+function MetricInline({
+  icon, label, value,
+}: { icon: React.ReactNode; label: string; value: string | number | null | undefined }) {
+  return (
+    <div className="flex items-center gap-1.5 text-secondary">
+      {icon}
+      <span className="text-[10px] uppercase tracking-wider">{label}:</span>
+      <span className="text-secondary font-medium truncate">
+        {value != null && value !== '' ? String(value) : '—'}
+      </span>
+    </div>
   )
 }
 
@@ -314,7 +420,7 @@ function ValidationSection({
               <p className="text-sm font-semibold text-green-300">
                 Atendimento validado
               </p>
-              <p className="text-[11px] text-muted mt-0.5">
+              <p className="text-[11px] text-secondary mt-0.5">
                 {record.validado_por ? <>por <span className="text-secondary">{record.validado_por}</span></> : 'sem responsável registrado'}
                 {record.validado_em && (
                   <>
@@ -334,7 +440,7 @@ function ValidationSection({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="text-xs px-2.5 py-1.5 rounded-lg border border-glass-border bg-glass text-muted hover:text-primary hover:border-orange-500/30 transition-colors cursor-pointer"
+              className="text-xs px-2.5 py-1.5 rounded-lg border border-glass-border bg-glass text-secondary hover:text-primary hover:border-orange-500/30 transition-colors cursor-pointer"
             >
               Editar
             </button>
@@ -343,7 +449,7 @@ function ValidationSection({
               disabled={saving}
               onClick={() => save(false)}
               title="Remover validação"
-              className="text-xs px-2 py-1.5 rounded-lg border border-glass-border bg-glass text-muted hover:text-red-400 hover:border-red-500/30 transition-colors cursor-pointer disabled:opacity-50"
+              className="text-xs px-2 py-1.5 rounded-lg border border-glass-border bg-glass text-secondary hover:text-red-400 hover:border-red-500/30 transition-colors cursor-pointer disabled:opacity-50"
             >
               <X size={12} />
             </button>
@@ -358,19 +464,19 @@ function ValidationSection({
     <div className="glass p-4 rounded-2xl">
       <div className="flex items-center gap-2 mb-3">
         <ShieldCheck size={16} className="text-orange-400" />
-        <h3 className="text-xs uppercase tracking-wider text-muted">
+        <h3 className="text-xs uppercase tracking-wider text-orange-300/90 font-semibold">
           {isValidated ? 'Editando validação' : 'Validação'}
         </h3>
       </div>
       <label className="block text-[11px] text-secondary mb-1.5">
-        Comentário <span className="text-muted">(opcional — observações sobre a validação)</span>
+        Comentário <span className="text-secondary">(opcional — observações sobre a validação)</span>
       </label>
       <textarea
         value={comentario}
         onChange={(e) => setComentario(e.target.value)}
         rows={3}
         placeholder="Ex: Resposta da IA foi adequada, sem necessidade de retrabalho."
-        className="w-full px-3 py-2 rounded-xl bg-base border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50 placeholder:text-muted resize-none"
+        className="w-full px-3 py-2 rounded-xl bg-base border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50 placeholder:text-secondary resize-none"
       />
       {error && (
         <p className="mt-2 text-xs text-red-400 bg-red-500/10 border border-red-500/25 rounded-lg px-3 py-2">
@@ -378,7 +484,7 @@ function ValidationSection({
         </p>
       )}
       <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
-        <span className="text-[11px] text-muted">
+        <span className="text-[11px] text-secondary">
           {userEmail ? <>Validando como <span className="text-secondary">{userEmail}</span></> : 'Sem usuário autenticado — campo "Validado por" ficará vazio'}
         </span>
         <div className="flex items-center gap-2">
@@ -391,7 +497,7 @@ function ValidationSection({
                 setComentario(record.validacao_comentario ?? '')
                 setError(null)
               }}
-              className="text-xs px-3 py-1.5 rounded-lg border border-glass-border bg-glass text-muted hover:text-primary transition-colors cursor-pointer disabled:opacity-50"
+              className="text-xs px-3 py-1.5 rounded-lg border border-glass-border bg-glass text-secondary hover:text-primary transition-colors cursor-pointer disabled:opacity-50"
             >
               Cancelar
             </button>
@@ -492,7 +598,7 @@ function ExamplesSection({ record }: { record: AtendimentoRecord }) {
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
           <Pin size={14} className="text-orange-400" />
-          <h3 className="text-xs uppercase tracking-wider text-muted">
+          <h3 className="text-xs uppercase tracking-wider text-orange-300/90 font-semibold">
             Mensagens vinculadas a cenários ({examples.length})
           </h3>
         </div>
@@ -513,7 +619,7 @@ function ExamplesSection({ record }: { record: AtendimentoRecord }) {
       {loading ? (
         <div className="flex justify-center py-4"><Spinner size="sm" /></div>
       ) : examples.length === 0 ? (
-        <p className="text-xs text-muted py-2">
+        <p className="text-xs text-secondary py-2">
           Nenhuma vinculação ainda. Use o botão acima ou faça hover sobre as bolhas do cliente
           na transcrição pra vincular mensagens individuais.
         </p>
@@ -537,12 +643,12 @@ function ExamplesSection({ record }: { record: AtendimentoRecord }) {
                       &ldquo;{e.chunk_text}&rdquo;
                     </p>
                   </div>
-                  <p className="text-[11px] text-muted mt-0.5">
+                  <p className="text-[11px] text-secondary mt-0.5">
                     → <span className="text-orange-300">{title}</span>
                     {' · '}
                     <span className="text-secondary">{product} → {moduleName}</span>
                   </p>
-                  <p className="text-[10px] text-muted mt-0.5">
+                  <p className="text-[10px] text-secondary mt-0.5">
                     {e.created_by ? `por ${e.created_by}` : 'sem autor'}
                     {' · '}
                     {new Date(e.created_at).toLocaleString('pt-BR')}
@@ -553,7 +659,7 @@ function ExamplesSection({ record }: { record: AtendimentoRecord }) {
                   disabled={removingId === e.id}
                   onClick={() => remove(e.id)}
                   title="Desvincular"
-                  className="shrink-0 p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-50"
+                  className="shrink-0 p-1.5 rounded-lg text-secondary hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {removingId === e.id ? <Spinner size="sm" /> : <Trash2 size={13} />}
                 </button>
@@ -579,10 +685,21 @@ function ExamplesSection({ record }: { record: AtendimentoRecord }) {
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  icon,
+  children,
+}: {
+  title: string
+  icon?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
-    <div>
-      <h3 className="text-xs uppercase tracking-wider text-muted mb-2">{title}</h3>
+    <div className="glass p-4 rounded-2xl">
+      <h3 className="flex items-center gap-2 text-xs uppercase tracking-wider text-orange-300/90 font-semibold mb-3">
+        {icon}
+        {title}
+      </h3>
       {children}
     </div>
   )
@@ -610,7 +727,7 @@ function TranscricaoBlock({
   if (!hasFormatada && !hasOriginal) {
     return (
       <Section title="Transcrição">
-        <p className="text-sm text-muted">Transcrição indisponível.</p>
+        <p className="text-sm text-secondary">Transcrição indisponível.</p>
       </Section>
     )
   }
@@ -644,7 +761,7 @@ function TranscricaoBlock({
               className={`px-3 py-1.5 cursor-pointer transition-colors ${
                 view === 'formatada'
                   ? 'bg-orange-500/10 text-orange-400'
-                  : 'text-muted hover:text-primary hover:bg-white/5'
+                  : 'text-secondary hover:text-primary hover:bg-white/5'
               }`}
             >
               Formatada
@@ -655,14 +772,14 @@ function TranscricaoBlock({
               className={`px-3 py-1.5 cursor-pointer transition-colors border-l border-glass-border ${
                 view === 'original'
                   ? 'bg-orange-500/10 text-orange-400'
-                  : 'text-muted hover:text-primary hover:bg-white/5'
+                  : 'text-secondary hover:text-primary hover:bg-white/5'
               }`}
             >
               Original (Supabase)
             </button>
           </div>
         ) : (
-          <span className="text-[11px] uppercase tracking-wider text-muted">
+          <span className="text-[11px] uppercase tracking-wider text-secondary">
             {isChat ? 'Conversa' : hasFormatada ? 'Formatada' : 'Original (Supabase)'}
           </span>
         )}
@@ -675,7 +792,7 @@ function TranscricaoBlock({
           className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs transition-colors cursor-pointer ${
             copied
               ? 'bg-green-500/10 border-green-500/25 text-green-400'
-              : 'bg-glass border-glass-border text-muted hover:text-primary hover:border-orange-500/40'
+              : 'bg-glass border-glass-border text-secondary hover:text-primary hover:border-orange-500/40'
           }`}
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
@@ -785,14 +902,45 @@ function Meta({
   icon?: React.ReactNode
 }) {
   return (
-    <div className="glass p-3">
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted mb-1">
+    <div className="rounded-xl bg-base/40 border border-glass-border/60 px-3 py-2">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-secondary mb-0.5">
         {icon}
         {label}
       </div>
-      <p className="text-sm text-primary truncate">
+      <p className="text-sm text-primary truncate font-medium">
         {value != null && value !== '' ? String(value) : '—'}
       </p>
+    </div>
+  )
+}
+
+// Linha de contato em formato horizontal "label → valor".
+// Ocupa só o necessário em altura, lê fácil em escaneamento vertical.
+// `mono` aplica font-mono pra dados estruturados (telefone, anydesk).
+function ContactRow({
+  icon,
+  label,
+  value,
+  mono,
+}: {
+  icon?: React.ReactNode
+  label: string
+  value: string | number | null | undefined
+  mono?: boolean
+}) {
+  const hasValue = value != null && value !== ''
+  return (
+    <div className="flex items-center justify-between gap-3 py-1">
+      <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-secondary shrink-0">
+        {icon}
+        {label}
+      </span>
+      <span
+        className={`text-sm font-medium text-right ${mono ? 'font-mono' : ''} ${hasValue ? 'text-primary' : 'text-secondary'}`}
+        title={hasValue ? String(value) : undefined}
+      >
+        {hasValue ? String(value) : '—'}
+      </span>
     </div>
   )
 }
@@ -813,8 +961,8 @@ function IdLigacaoMeta({ value }: { value: string | null | undefined }) {
   }
 
   return (
-    <div className="glass p-3">
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted mb-1">
+    <div className="rounded-xl bg-base/40 border border-glass-border/60 px-3 py-2">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-secondary mb-0.5">
         ID Ligação
       </div>
       <div className="flex items-center gap-2">
@@ -830,7 +978,7 @@ function IdLigacaoMeta({ value }: { value: string | null | undefined }) {
             className={`shrink-0 p-1.5 rounded-lg border transition-colors cursor-pointer ${
               copied
                 ? 'bg-green-500/10 border-green-500/25 text-green-400'
-                : 'bg-glass border-glass-border text-muted hover:text-primary hover:border-orange-500/40'
+                : 'bg-glass border-glass-border text-secondary hover:text-primary hover:border-orange-500/40'
             }`}
           >
             {copied ? <Check size={12} /> : <Copy size={12} />}

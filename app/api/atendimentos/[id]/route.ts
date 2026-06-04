@@ -85,6 +85,27 @@ export async function PATCH(
         : null
   }
 
+  // Reclassificação manual de status — caso típico é o reviewer marcar
+  // como "resolvido_parcialmente" um atendimento que veio como "transferida"
+  // mas foi parcialmente resolvido antes da transferência.
+  const STATUS_PERMITIDOS = new Set([
+    'em_atendimento',
+    'transferida',
+    'resolvida_ia',
+    'resolvido_parcialmente',
+    'interrompida',
+  ])
+  if ('status' in body) {
+    const novoStatus = typeof body.status === 'string' ? body.status : ''
+    if (!STATUS_PERMITIDOS.has(novoStatus)) {
+      return Response.json(
+        { error: `Status inválido. Use um de: ${Array.from(STATUS_PERMITIDOS).join(', ')}` },
+        { status: 400 }
+      )
+    }
+    update.status = novoStatus
+  }
+
   if (Object.keys(update).length === 0) {
     return Response.json({ error: 'Nada a atualizar' }, { status: 400 })
   }

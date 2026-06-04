@@ -162,6 +162,7 @@ export type AtendimentoStatus =
   | 'em_atendimento'
   | 'transferida'
   | 'resolvida_ia'
+  | 'resolvido_parcialmente'
   | 'interrompida'
 export type AtendimentoDestino = 'servicedesk' | 'financeiro' | null
 

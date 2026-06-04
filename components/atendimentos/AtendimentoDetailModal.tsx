@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { GlassModal } from '@/components/ui/GlassModal'
 import { Spinner } from '@/components/ui/Spinner'
 import { Building2, Phone, MessageSquare, Star, Monitor, Calendar, DollarSign, Smile, Copy, Check, ShieldCheck, X, Pin, Trash2, Tag, MessageCircle, PhoneCall, Clock, FileText, Search, User } from 'lucide-react'
@@ -109,6 +109,10 @@ export function AtendimentoDetailModal({
             usuário uma visão de relance antes de entrar nos detalhes. */}
         <div className="rounded-2xl border border-glass-border bg-gradient-to-br from-white/[0.03] to-white/[0.01] px-4 py-3">
           <div className="flex items-center gap-2 flex-wrap">
+            <StatusChipWithReclassify
+              record={detail}
+              onChanged={onValidationSaved}
+            />
             {detail.validado && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-green-500/15 border-green-500/40 text-green-300">
                 <ShieldCheck size={12} />
@@ -681,6 +685,148 @@ function ExamplesSection({ record }: { record: AtendimentoRecord }) {
           window.dispatchEvent(new CustomEvent('atendimento-example-linked'))
         }}
       />
+    </div>
+  )
+}
+
+// Chip de status atual + botão de reclassificação (transferida → resolvido
+// parcialmente). Hoje só essa transição faz sentido pelo UX combinado com o
+// usuário, mas o helper aceita qualquer status válido caso a gente queira
+// expandir depois (ex: undo, em_atendimento → resolvida_ia, etc.).
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  em_atendimento:         { label: 'Em atendimento',   cls: 'bg-blue-500/10 border-blue-500/30 text-blue-300' },
+  transferida:            { label: 'Transferida',      cls: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-300' },
+  resolvida_ia:           { label: 'Resolvida IA',     cls: 'bg-green-500/10 border-green-500/30 text-green-300' },
+  resolvido_parcialmente: { label: 'Resolvido Parcial.', cls: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' },
+  interrompida:           { label: 'Interrompida',     cls: 'bg-red-500/10 border-red-500/30 text-red-300' },
+}
+
+function StatusChipWithReclassify({
+  record,
+  onChanged,
+}: {
+  record: AtendimentoRecord
+  onChanged?: (updated: AtendimentoRecord) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [open, setOpen] = useState(false)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const status = record.status ?? ''
+  const meta = STATUS_META[status] ?? { label: status || '—', cls: 'bg-glass border-glass-border text-secondary' }
+  const podeReclassificarParcial = status === 'transferida'
+  const ehParcial = status === 'resolvido_parcialmente'
+  const isClickable = podeReclassificarParcial || ehParcial
+
+  // Opções disponíveis pra trocar. Hoje só Transferida ↔ Resolvido Parcial.
+  // Pode ser expandido pra cobrir mais transições no futuro.
+  const opcoes: Array<{ codigo: 'transferida' | 'resolvido_parcialmente'; label: string; cls: string }> = []
+  if (podeReclassificarParcial) {
+    opcoes.push({
+      codigo: 'resolvido_parcialmente',
+      label: 'Resolvido Parcialmente',
+      cls: 'text-emerald-300 hover:bg-emerald-500/10',
+    })
+  } else if (ehParcial) {
+    opcoes.push({
+      codigo: 'transferida',
+      label: 'Transferida',
+      cls: 'text-yellow-300 hover:bg-yellow-500/10',
+    })
+  }
+
+  // Fecha o dropdown ao clicar fora ou apertar ESC.
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  async function reclassify(novoStatus: 'resolvido_parcialmente' | 'transferida') {
+    setSaving(true)
+    setOpen(false)
+    try {
+      const res = await fetch(`/api/atendimentos/${record.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: novoStatus }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        onChanged?.(json.atendimento as AtendimentoRecord)
+      } else {
+        alert(json?.error ?? 'Falha ao reclassificar')
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro inesperado')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Não-clicável: span simples.
+  if (!isClickable) {
+    return (
+      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${meta.cls}`}>
+        {meta.label}
+      </span>
+    )
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative inline-flex">
+      {/* Chip-botão: clique abre o dropdown */}
+      <button
+        type="button"
+        disabled={saving}
+        onClick={() => setOpen((v) => !v)}
+        title="Trocar status do atendimento"
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${meta.cls} cursor-pointer hover:brightness-125 transition-all ${saving ? 'opacity-50' : ''}`}
+      >
+        {meta.label}
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          fill="none"
+          className={`transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div
+          className="absolute top-full left-0 mt-1 min-w-[200px] z-20 rounded-xl border border-orange-500/30 bg-base shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
+        >
+          <div className="px-3 py-2 border-b border-glass-border/60 text-[10px] uppercase tracking-wider text-secondary">
+            Trocar status para
+          </div>
+          {opcoes.map((opt) => (
+            <button
+              key={opt.codigo}
+              type="button"
+              disabled={saving}
+              onClick={() => void reclassify(opt.codigo)}
+              className={`w-full text-left px-3 py-2 text-sm font-medium transition-colors cursor-pointer ${opt.cls} disabled:opacity-50`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -16,6 +16,7 @@ ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 type DailyBucket = {
   date: string
   resolvidos: number
+  parcialmente: number
   transferidos: number
   outros: number
 }
@@ -45,6 +46,13 @@ export function DailyVolumeChart({ data }: { data: DailyBucket[] }) {
         label: 'Resolvidos',
         data: data.map((d) => d.resolvidos),
         backgroundColor: 'rgba(34, 197, 94, 0.75)',
+        borderRadius: 4,
+        stack: 'status',
+      },
+      {
+        label: 'Resolvidos parcial.',
+        data: data.map((d) => d.parcialmente),
+        backgroundColor: 'rgba(16, 185, 129, 0.75)',
         borderRadius: 4,
         stack: 'status',
       },

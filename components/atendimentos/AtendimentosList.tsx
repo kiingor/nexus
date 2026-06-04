@@ -50,6 +50,8 @@ function statusBadge(status: string | null): { label: string; cls: string } {
       return { label: 'Transferida', cls: 'bg-yellow-500/10 border-yellow-500/25 text-yellow-400' }
     case 'resolvida_ia':
       return { label: 'Resolvida IA', cls: 'bg-green-500/10 border-green-500/25 text-green-400' }
+    case 'resolvido_parcialmente':
+      return { label: 'Resolvido Parcial.', cls: 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300' }
     case 'interrompida':
       return { label: 'Interrompida', cls: 'bg-red-500/10 border-red-500/25 text-red-400' }
     default:

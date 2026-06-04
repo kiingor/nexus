@@ -10,6 +10,7 @@ import Link from 'next/link'
 import {
   Headphones,
   CheckCircle2,
+  CheckCheck,
   ArrowRightLeft,
   Filter,
   Percent,
@@ -147,6 +148,7 @@ type StatsResponse = {
   total: number
   em_atendimento: number
   resolvida_ia: number
+  resolvido_parcialmente: number
   transferida: number
   interrompida: number
 }
@@ -155,11 +157,12 @@ const STATS_EMPTY: StatsResponse = {
   total: 0,
   em_atendimento: 0,
   resolvida_ia: 0,
+  resolvido_parcialmente: 0,
   transferida: 0,
   interrompida: 0,
 }
 
-type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 'interrompida'
+type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 'resolvido_parcialmente' | 'interrompida'
 type DestinoFilter = 'all' | 'servicedesk' | 'financeiro' | 'comercial' | 'ouvidoria'
 type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
 type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
@@ -408,6 +411,7 @@ export default function AtendimentosPage() {
           total: Number(data.total) || 0,
           em_atendimento: Number(data.em_atendimento) || 0,
           resolvida_ia: Number(data.resolvida_ia) || 0,
+          resolvido_parcialmente: Number(data.resolvido_parcialmente) || 0,
           transferida: Number(data.transferida) || 0,
           interrompida: Number(data.interrompida) || 0,
         })
@@ -517,13 +521,19 @@ export default function AtendimentosPage() {
 
       {/* Stats — números globais respeitando os filtros atuais (todas as
           páginas, não só a atual). Vêm do endpoint /atendimentos/stats. */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         <StatCard icon={<Headphones size={18} />} label="Total" value={String(stats.total)} />
         <StatCard
           icon={<CheckCircle2 size={18} />}
           label="Resolvidas IA"
           value={String(stats.resolvida_ia)}
           accent="green"
+        />
+        <StatCard
+          icon={<CheckCheck size={18} />}
+          label="Resolvido Parcial."
+          value={String(stats.resolvido_parcialmente)}
+          accent="emerald"
         />
         <StatCard
           icon={<ArrowRightLeft size={18} />}
@@ -562,6 +572,7 @@ export default function AtendimentosPage() {
           <option value="em_atendimento">Em atendimento</option>
           <option value="transferida">Transferida</option>
           <option value="resolvida_ia">Resolvida IA</option>
+          <option value="resolvido_parcialmente">Resolvido Parcialmente</option>
           <option value="interrompida">Interrompida</option>
         </select>
 
@@ -883,18 +894,20 @@ function StatCard({
   icon: React.ReactNode
   label: string
   value: string
-  accent?: 'green' | 'yellow' | 'red' | 'blue'
+  accent?: 'green' | 'yellow' | 'red' | 'blue' | 'emerald'
 }) {
   const color =
     accent === 'green'
       ? 'text-green-400'
-      : accent === 'yellow'
-        ? 'text-yellow-400'
-        : accent === 'red'
-          ? 'text-red-400'
-          : accent === 'blue'
-            ? 'text-blue-400'
-            : 'text-primary'
+      : accent === 'emerald'
+        ? 'text-emerald-300'
+        : accent === 'yellow'
+          ? 'text-yellow-400'
+          : accent === 'red'
+            ? 'text-red-400'
+            : accent === 'blue'
+              ? 'text-blue-400'
+              : 'text-primary'
 
   return (
     <div className="glass p-4">

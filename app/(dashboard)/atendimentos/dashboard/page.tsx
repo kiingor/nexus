@@ -17,7 +17,7 @@ type PeriodPreset = 'todos' | 'hoje' | '3d' | '7d' | '15d' | 'mes' | 'custom'
 
 // Filtros espelhados da aba Lista — pra que o dashboard mostre agregação
 // sobre o MESMO conjunto que aparece na Lista.
-type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 'interrompida'
+type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 'resolvido_parcialmente' | 'interrompida'
 type DestinoFilter = 'all' | 'servicedesk' | 'financeiro' | 'comercial' | 'ouvidoria'
 type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
 type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
@@ -59,13 +59,14 @@ type DashboardResponse = {
   kpi: {
     total: number
     resolvidos: number
+    parcialmente: number
     transferidos: number
     em_atendimento: number
     interrompida: number
     percentualResolucao: number
   }
   byStatus: Array<{ status: string; count: number }>
-  byDay: Array<{ date: string; resolvidos: number; transferidos: number; outros: number }>
+  byDay: Array<{ date: string; resolvidos: number; parcialmente: number; transferidos: number; outros: number }>
   topMotivos: Array<{ motivo: string; count: number }>
   mostResolvidos: Array<{ motivo: string; count: number }>
   mostTransferidos: Array<{ motivo: string; count: number }>
@@ -73,6 +74,7 @@ type DashboardResponse = {
     motivo: string
     total: number
     resolvidos: number
+    parcialmente: number
     transferidos: number
     finalizados: number
     percentual: number | null
@@ -81,7 +83,7 @@ type DashboardResponse = {
 }
 
 const EMPTY: DashboardResponse = {
-  kpi: { total: 0, resolvidos: 0, transferidos: 0, em_atendimento: 0, interrompida: 0, percentualResolucao: 0 },
+  kpi: { total: 0, resolvidos: 0, parcialmente: 0, transferidos: 0, em_atendimento: 0, interrompida: 0, percentualResolucao: 0 },
   byStatus: [],
   byDay: [],
   topMotivos: [],
@@ -206,6 +208,7 @@ export default function AtendimentosDashboardPage() {
           <option value="em_atendimento">Em atendimento</option>
           <option value="transferida">Transferida</option>
           <option value="resolvida_ia">Resolvida IA</option>
+          <option value="resolvido_parcialmente">Resolvido Parcialmente</option>
           <option value="interrompida">Interrompida</option>
         </select>
 
@@ -313,6 +316,7 @@ export default function AtendimentosDashboardPage() {
           <KPICards
             total={data.kpi.total}
             resolvidos={data.kpi.resolvidos}
+            parcialmente={data.kpi.parcialmente}
             transferidos={data.kpi.transferidos}
             percentualResolucao={data.kpi.percentualResolucao}
           />

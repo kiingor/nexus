@@ -25,6 +25,7 @@ type Counts = {
   total: number
   em_atendimento: number
   resolvida_ia: number
+  resolvido_parcialmente: number
   transferida: number
   interrompida: number
   custoTotal: number
@@ -130,9 +131,10 @@ export async function GET(request: NextRequest) {
 
   // Counts por status — sempre todos, ignorando o filtro de status atual,
   // pra que os cards mostrem a distribuição real do conjunto filtrado.
-  const [emAtendimento, resolvida, transferida, interrompida] = await Promise.all([
+  const [emAtendimento, resolvida, parcialmente, transferida, interrompida] = await Promise.all([
     countStatus(supabase, searchParams, 'em_atendimento'),
     countStatus(supabase, searchParams, 'resolvida_ia'),
+    countStatus(supabase, searchParams, 'resolvido_parcialmente'),
     countStatus(supabase, searchParams, 'transferida'),
     countStatus(supabase, searchParams, 'interrompida'),
   ])
@@ -162,6 +164,7 @@ export async function GET(request: NextRequest) {
     total: totalRes.count ?? 0,
     em_atendimento: emAtendimento,
     resolvida_ia: resolvida,
+    resolvido_parcialmente: parcialmente,
     transferida: transferida,
     interrompida: interrompida,
     custoTotal,

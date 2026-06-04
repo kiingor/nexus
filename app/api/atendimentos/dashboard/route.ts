@@ -130,33 +130,36 @@ export async function GET(request: NextRequest) {
   }
 
   // ── KPI ────────────────────────────────────────────────────────────
-  let resolvidos = 0, transferidos = 0, emAtendimento = 0, interrompida = 0
+  let resolvidos = 0, parcialmente = 0, transferidos = 0, emAtendimento = 0, interrompida = 0
   for (const r of rows) {
     if (r.status === 'resolvida_ia') resolvidos++
+    else if (r.status === 'resolvido_parcialmente') parcialmente++
     else if (r.status === 'transferida') transferidos++
     else if (r.status === 'em_atendimento') emAtendimento++
     else if (r.status === 'interrompida') interrompida++
   }
   const total = rows.length
-  // % Resolução: só sobre os FINALIZADOS (resolvidos + transferidos) —
-  // ignora em_atendimento/interrompida pra não distorcer pra baixo.
-  const finalizados = resolvidos + transferidos
+  // % Resolução: sobre FINALIZADOS, parcial NÃO conta como resolvido —
+  // ainda foi transferida no fim das contas. Parcial é só uma anotação
+  // do reviewer indicando que a IA ajudou em algo antes da transferência.
+  const finalizados = resolvidos + parcialmente + transferidos
   const percentualResolucao =
     finalizados > 0 ? Math.round((resolvidos / finalizados) * 100) : 0
 
-  // ── byStatus (4 buckets) ──────────────────────────────────────────
+  // ── byStatus (5 buckets) ──────────────────────────────────────────
   const byStatus = [
-    { status: 'resolvida_ia',   count: resolvidos },
-    { status: 'transferida',    count: transferidos },
-    { status: 'em_atendimento', count: emAtendimento },
-    { status: 'interrompida',   count: interrompida },
+    { status: 'resolvida_ia',           count: resolvidos },
+    { status: 'resolvido_parcialmente', count: parcialmente },
+    { status: 'transferida',            count: transferidos },
+    { status: 'em_atendimento',         count: emAtendimento },
+    { status: 'interrompida',           count: interrompida },
   ]
 
   // ── byDay (volume diário) ─────────────────────────────────────────
   // Agrupa por YYYY-MM-DD (UTC-3) — mesmo fuso usado nos filtros.
   const byDayMap = new Map<
     string,
-    { date: string; resolvidos: number; transferidos: number; outros: number }
+    { date: string; resolvidos: number; parcialmente: number; transferidos: number; outros: number }
   >()
   for (const r of rows) {
     const iso = r.criado_em ?? r.data_hora_chegada
@@ -173,8 +176,9 @@ export async function GET(request: NextRequest) {
 
     const bucket =
       byDayMap.get(key) ??
-      { date: key, resolvidos: 0, transferidos: 0, outros: 0 }
+      { date: key, resolvidos: 0, parcialmente: 0, transferidos: 0, outros: 0 }
     if (r.status === 'resolvida_ia') bucket.resolvidos++
+    else if (r.status === 'resolvido_parcialmente') bucket.parcialmente++
     else if (r.status === 'transferida') bucket.transferidos++
     else bucket.outros++
     byDayMap.set(key, bucket)
@@ -186,11 +190,11 @@ export async function GET(request: NextRequest) {
   // ── topMotivos + worstMotivos ─────────────────────────────────────
   const motivoStats = new Map<
     string,
-    { motivo: string; total: number; resolvidos: number; transferidos: number }
+    { motivo: string; total: number; resolvidos: number; parcialmente: number; transferidos: number }
   >()
   // Inicializa todos os buckets com zero pra ordenação estável
   for (const cat of MOTIVO_CATEGORIES) {
-    motivoStats.set(cat, { motivo: cat, total: 0, resolvidos: 0, transferidos: 0 })
+    motivoStats.set(cat, { motivo: cat, total: 0, resolvidos: 0, parcialmente: 0, transferidos: 0 })
   }
   for (const r of rows) {
     const motivo = classifyMotivo({
@@ -201,6 +205,7 @@ export async function GET(request: NextRequest) {
     const bucket = motivoStats.get(motivo)!
     bucket.total++
     if (r.status === 'resolvida_ia') bucket.resolvidos++
+    else if (r.status === 'resolvido_parcialmente') bucket.parcialmente++
     else if (r.status === 'transferida') bucket.transferidos++
   }
   const motivoArr = Array.from(motivoStats.values()).filter((m) => m.total > 0)
@@ -232,7 +237,9 @@ export async function GET(request: NextRequest) {
   // Devolve TODOS qualificados; front controla "Mostrar mais".
   const worstMotivos = motivoArr
     .map((m) => {
-      const fin = m.resolvidos + m.transferidos
+      // Parcial entra no denominador (foi finalizado) mas NÃO no numerador
+      // — coerente com a fórmula global do KPI.
+      const fin = m.resolvidos + m.parcialmente + m.transferidos
       const pct = fin > 0 ? Math.round((m.resolvidos / fin) * 100) : null
       return { ...m, finalizados: fin, percentual: pct }
     })
@@ -243,6 +250,7 @@ export async function GET(request: NextRequest) {
     kpi: {
       total,
       resolvidos,
+      parcialmente,
       transferidos,
       em_atendimento: emAtendimento,
       interrompida,

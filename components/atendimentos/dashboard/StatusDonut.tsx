@@ -16,10 +16,11 @@ type Bucket = { status: string; count: number }
 // Donut de distribuição por status (resolvida_ia / transferida / em_atendimento / interrompida).
 // Cores alinhadas com os badges já usados na Lista.
 const STATUS_META: Record<string, { label: string; color: string }> = {
-  resolvida_ia:   { label: 'Resolvida IA',   color: 'rgba(34, 197, 94, 0.85)'   }, // green-500
-  transferida:    { label: 'Transferida',    color: 'rgba(234, 179, 8, 0.85)'   }, // yellow-500
-  em_atendimento: { label: 'Em atendimento', color: 'rgba(59, 130, 246, 0.85)'  }, // blue-500
-  interrompida:   { label: 'Interrompida',   color: 'rgba(239, 68, 68, 0.85)'   }, // red-500
+  resolvida_ia:           { label: 'Resolvida IA',         color: 'rgba(34, 197, 94, 0.85)'   }, // green-500
+  resolvido_parcialmente: { label: 'Resolvido Parcial.',   color: 'rgba(16, 185, 129, 0.85)'  }, // emerald-500
+  transferida:            { label: 'Transferida',          color: 'rgba(234, 179, 8, 0.85)'   }, // yellow-500
+  em_atendimento:         { label: 'Em atendimento',       color: 'rgba(59, 130, 246, 0.85)'  }, // blue-500
+  interrompida:           { label: 'Interrompida',         color: 'rgba(239, 68, 68, 0.85)'   }, // red-500
 }
 
 export function StatusDonut({ data }: { data: Bucket[] }) {

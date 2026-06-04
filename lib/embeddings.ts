@@ -233,3 +233,76 @@ export async function deleteItemEmbeddings(itemId: string): Promise<void> {
     .delete()
     .eq('item_id', itemId)
 }
+
+// ---------------------------------------------------------------------------
+// Client example embeddings (vinculação manual de mensagem → cenário)
+// ---------------------------------------------------------------------------
+
+export interface SyncExampleEmbeddingParams {
+  itemId: string                // knowledge_items.id (o cenário alvo)
+  messageText: string           // frase real do cliente
+  sourceAtendimentoId?: number | null
+  sourceMessageIndex?: number | null
+  sourceSpeaker?: string | null
+  createdBy?: string | null     // email do reviewer (vem do auth do front)
+}
+
+export interface ExampleEmbeddingResult {
+  id: string                    // knowledge_embeddings.id criado
+  item_id: string
+}
+
+/**
+ * Gera embedding pra uma mensagem real do cliente e insere em
+ * knowledge_embeddings com chunk_type='client_example'. O mesmo
+ * vector store que o n8n consulta (match_items_openai) vai retornar
+ * o item_id correspondente quando uma mensagem similar aparecer no
+ * futuro — sem mudanças no n8n.
+ */
+export async function syncExampleEmbedding(
+  params: SyncExampleEmbeddingParams
+): Promise<ExampleEmbeddingResult> {
+  if (!params.messageText?.trim()) {
+    throw new Error('messageText vazio')
+  }
+  const supabase = getSupabase()
+
+  // Sanity check: item alvo existe e está ativo
+  const { data: item } = await supabase
+    .from('knowledge_items')
+    .select('id, is_active')
+    .eq('id', params.itemId)
+    .maybeSingle()
+  if (!item) throw new Error('Cenário (knowledge_item) não encontrado')
+
+  // Gera embedding(s) — OpenAI sempre, Gemini se a chave estiver configurada
+  const text = params.messageText.trim()
+  const [embeddingOpenai, embeddingGemini] = await Promise.all([
+    getOpenAIEmbedding(text),
+    getGeminiEmbedding(text),
+  ])
+
+  const row: Record<string, unknown> = {
+    item_id: params.itemId,
+    chunk_type: 'client_example',
+    step_number: null,
+    chunk_text: text,
+    embedding_openai: JSON.stringify(embeddingOpenai),
+    source_atendimento_id: params.sourceAtendimentoId ?? null,
+    source_message_index: params.sourceMessageIndex ?? null,
+    source_speaker: params.sourceSpeaker ?? null,
+    created_by: params.createdBy ?? null,
+  }
+  if (embeddingGemini) {
+    row.embedding_gemini = JSON.stringify(embeddingGemini)
+  }
+
+  const { data, error } = await supabase
+    .from('knowledge_embeddings')
+    .insert(row)
+    .select('id, item_id')
+    .single()
+
+  if (error) throw new Error(`Falha ao salvar exemplo: ${error.message}`)
+  return data as ExampleEmbeddingResult
+}

@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react'
 import { GlassModal } from '@/components/ui/GlassModal'
 import { Spinner } from '@/components/ui/Spinner'
-import { Building2, Phone, MessageSquare, Star, Monitor, Calendar, DollarSign, Smile, Copy, Check, ShieldCheck, X } from 'lucide-react'
+import { Building2, Phone, MessageSquare, Star, Monitor, Calendar, DollarSign, Smile, Copy, Check, ShieldCheck, X, Pin, Trash2 } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
 import { formatCusto, formatDuracao, parseTranscricao, sentimentoBadge } from '@/lib/atendimentos'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { VincularCenarioModal } from '@/components/atendimentos/VincularCenarioModal'
 
 interface Props {
   record: AtendimentoRecord | null
@@ -97,6 +98,7 @@ export function AtendimentoDetailModal({
         )}
 
         <ValidationSection record={detail} onSaved={onValidationSaved} />
+        <ExamplesSection record={detail} />
 
         {/* Header — só faz sentido em ligação (chat não tem início/fim/duração/custo) */}
         {!isChat && (
@@ -205,6 +207,7 @@ export function AtendimentoDetailModal({
           formatada={detail.transcricao_formatada}
           original={detail.transcricao}
           isChat={isChat}
+          atendimentoId={detail.id}
         />
 
         {/* Avaliações */}
@@ -408,6 +411,174 @@ function ValidationSection({
   )
 }
 
+// Lista as mensagens deste atendimento que já foram vinculadas a um
+// cenário (knowledge_item). Recarrega quando uma nova vinculação é feita
+// no modal (via custom event 'atendimento-example-linked').
+interface ExampleRow {
+  id: string
+  chunk_text: string
+  source_message_index: number | null
+  source_speaker: string | null
+  created_by: string | null
+  created_at: string
+  item_id: string
+  knowledge_items?: {
+    id: string
+    title: string
+    module_id: string
+    modules?: {
+      id: string
+      name: string
+      products?: { id: string; name: string; slug: string } | null
+    } | null
+  } | null
+}
+
+function ExamplesSection({ record }: { record: AtendimentoRecord }) {
+  const atendimentoId = record.id
+  const [examples, setExamples] = useState<ExampleRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [removingId, setRemovingId] = useState<string | null>(null)
+  const [showVincularConv, setShowVincularConv] = useState(false)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const r = await fetch(`/api/atendimentos/${atendimentoId}/examples`)
+      const j = await r.json()
+      if (r.ok) setExamples((j.examples as ExampleRow[]) ?? [])
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+    const handler = () => void load()
+    window.addEventListener('atendimento-example-linked', handler)
+    return () => window.removeEventListener('atendimento-example-linked', handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atendimentoId])
+
+  async function remove(id: string) {
+    if (!confirm('Remover essa mensagem do cenário?')) return
+    setRemovingId(id)
+    try {
+      const r = await fetch(`/api/knowledge-embeddings/${id}`, { method: 'DELETE' })
+      if (r.ok) setExamples((prev) => prev.filter((e) => e.id !== id))
+    } finally {
+      setRemovingId(null)
+    }
+  }
+
+  // Concatena APENAS falas do cliente — o que sobra é o que importa pra
+  // busca semântica (intenção do usuário). Texto do bot polui o embedding.
+  const wholeConversationText = (() => {
+    const raw = record.transcricao
+    if (!raw) return ''
+    const msgs = parseTranscricao(raw)
+    return msgs
+      .filter((m) => m.isClient && m.text.trim())
+      .map((m) => m.text.trim())
+      .join('\n')
+  })()
+
+  const hasClientText = wholeConversationText.length > 10
+
+  return (
+    <div className="glass p-4 rounded-2xl">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2">
+          <Pin size={14} className="text-orange-400" />
+          <h3 className="text-xs uppercase tracking-wider text-muted">
+            Mensagens vinculadas a cenários ({examples.length})
+          </h3>
+        </div>
+        <button
+          type="button"
+          disabled={!hasClientText}
+          onClick={() => setShowVincularConv(true)}
+          title={hasClientText
+            ? 'Vincular a conversa inteira (todas as falas do cliente) a um cenário'
+            : 'Sem falas do cliente na transcrição'}
+          className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-orange-500/15 border border-orange-500/40 text-orange-300 hover:bg-orange-500/25 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Pin size={12} />
+          Vincular conversa inteira
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-4"><Spinner size="sm" /></div>
+      ) : examples.length === 0 ? (
+        <p className="text-xs text-muted py-2">
+          Nenhuma vinculação ainda. Use o botão acima ou faça hover sobre as bolhas do cliente
+          na transcrição pra vincular mensagens individuais.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {examples.map((e) => {
+            const product = e.knowledge_items?.modules?.products?.name ?? '—'
+            const moduleName = e.knowledge_items?.modules?.name ?? '—'
+            const title = e.knowledge_items?.title ?? 'Cenário desconhecido'
+            const isWholeConv = e.source_speaker === 'conversa-inteira'
+            return (
+              <div key={e.id} className="flex items-start justify-between gap-3 px-3 py-2 rounded-lg bg-base/40 border border-glass-border">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    {isWholeConv && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border bg-purple-500/10 border-purple-500/30 text-purple-300 shrink-0">
+                        Conversa
+                      </span>
+                    )}
+                    <p className="text-sm text-primary line-clamp-2" title={e.chunk_text}>
+                      &ldquo;{e.chunk_text}&rdquo;
+                    </p>
+                  </div>
+                  <p className="text-[11px] text-muted mt-0.5">
+                    → <span className="text-orange-300">{title}</span>
+                    {' · '}
+                    <span className="text-secondary">{product} → {moduleName}</span>
+                  </p>
+                  <p className="text-[10px] text-muted mt-0.5">
+                    {e.created_by ? `por ${e.created_by}` : 'sem autor'}
+                    {' · '}
+                    {new Date(e.created_at).toLocaleString('pt-BR')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={removingId === e.id}
+                  onClick={() => remove(e.id)}
+                  title="Desvincular"
+                  className="shrink-0 p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {removingId === e.id ? <Spinner size="sm" /> : <Trash2 size={13} />}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <VincularCenarioModal
+        open={showVincularConv}
+        onClose={() => setShowVincularConv(false)}
+        messageText={wholeConversationText}
+        atendimentoId={atendimentoId}
+        messageIndex={null}
+        speaker="conversa-inteira"
+        mode="conversation"
+        onLinked={() => {
+          window.dispatchEvent(new CustomEvent('atendimento-example-linked'))
+        }}
+      />
+    </div>
+  )
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
@@ -421,10 +592,12 @@ function TranscricaoBlock({
   formatada,
   original,
   isChat,
+  atendimentoId,
 }: {
   formatada: string | null
   original: string | null
   isChat: boolean
+  atendimentoId: number
 }) {
   const hasFormatada = !!formatada && formatada.trim() !== ''
   const hasOriginal = !!original && original.trim() !== ''
@@ -511,7 +684,7 @@ function TranscricaoBlock({
       </div>
 
       {showBubbles ? (
-        <ChatBubbles messages={messages} />
+        <ChatBubbles messages={messages} atendimentoId={atendimentoId} />
       ) : (
         <pre className="text-xs text-secondary bg-glass border border-glass-border rounded-xl p-3 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-[320px]">
           {text}
@@ -523,45 +696,82 @@ function TranscricaoBlock({
 
 function ChatBubbles({
   messages,
+  atendimentoId,
 }: {
   messages: import('@/lib/atendimentos').TranscricaoMessage[]
+  atendimentoId: number
 }) {
+  const [vincularTarget, setVincularTarget] = useState<{
+    text: string
+    index: number
+    speaker: string
+  } | null>(null)
+
   return (
-    <div className="bg-glass border border-glass-border rounded-xl p-4 max-h-[420px] overflow-y-auto space-y-3">
-      {messages.map((m, idx) => {
-        const prev = idx > 0 ? messages[idx - 1] : null
-        const showSpeaker = !prev || prev.speaker !== m.speaker
-        return (
-          <div
-            key={idx}
-            className={`flex ${m.isClient ? 'justify-start' : 'justify-end'}`}
-          >
-            <div className={`max-w-[78%] ${m.isClient ? '' : 'items-end'}`}>
-              {showSpeaker && m.speaker && (
-                <p
-                  className={`text-[10px] uppercase tracking-wider mb-1 ${
+    <>
+      <div className="bg-glass border border-glass-border rounded-xl p-4 max-h-[420px] overflow-y-auto space-y-3">
+        {messages.map((m, idx) => {
+          const prev = idx > 0 ? messages[idx - 1] : null
+          const showSpeaker = !prev || prev.speaker !== m.speaker
+          // Botão "vincular" só faz sentido em mensagens do cliente (são
+          // elas que viram exemplos de variação no RAG).
+          const canVincular = m.isClient && (m.text || '').trim().length > 3
+          return (
+            <div
+              key={idx}
+              className={`flex group ${m.isClient ? 'justify-start' : 'justify-end'}`}
+            >
+              <div className={`max-w-[78%] ${m.isClient ? '' : 'items-end'} relative`}>
+                {showSpeaker && m.speaker && (
+                  <p
+                    className={`text-[10px] uppercase tracking-wider mb-1 ${
+                      m.isClient
+                        ? 'text-blue-400 text-left'
+                        : 'text-orange-400 text-right'
+                    }`}
+                  >
+                    {m.speaker}
+                  </p>
+                )}
+                <div
+                  className={`px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed border ${
                     m.isClient
-                      ? 'text-blue-400 text-left'
-                      : 'text-orange-400 text-right'
+                      ? 'bg-blue-500/10 border-blue-500/25 text-blue-50 rounded-2xl rounded-bl-sm'
+                      : 'bg-orange-500/10 border-orange-500/30 text-orange-50 rounded-2xl rounded-br-sm'
                   }`}
                 >
-                  {m.speaker}
-                </p>
-              )}
-              <div
-                className={`px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed border ${
-                  m.isClient
-                    ? 'bg-blue-500/10 border-blue-500/25 text-blue-50 rounded-2xl rounded-bl-sm'
-                    : 'bg-orange-500/10 border-orange-500/30 text-orange-50 rounded-2xl rounded-br-sm'
-                }`}
-              >
-                {m.text || '—'}
+                  {m.text || '—'}
+                </div>
+                {canVincular && (
+                  <button
+                    type="button"
+                    onClick={() => setVincularTarget({ text: m.text, index: idx, speaker: m.speaker })}
+                    title="Vincular essa mensagem a um cenário do Nexus IA"
+                    className="absolute -right-2 -top-2 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-orange-500/15 border-orange-500/40 text-orange-300 hover:bg-orange-500/30 cursor-pointer shadow-md"
+                  >
+                    <Pin size={10} />
+                    Vincular
+                  </button>
+                )}
               </div>
             </div>
-          </div>
-        )
-      })}
-    </div>
+          )
+        })}
+      </div>
+
+      <VincularCenarioModal
+        open={!!vincularTarget}
+        onClose={() => setVincularTarget(null)}
+        messageText={vincularTarget?.text ?? ''}
+        atendimentoId={atendimentoId}
+        messageIndex={vincularTarget?.index ?? null}
+        speaker={vincularTarget?.speaker ?? 'cliente'}
+        onLinked={() => {
+          // Dispara um evento global pra ExamplesSection recarregar.
+          window.dispatchEvent(new CustomEvent('atendimento-example-linked'))
+        }}
+      />
+    </>
   )
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { classifyMotivo, MOTIVO_CATEGORIES } from '@/lib/atendimentos'
+import { TIPO_ATENDIMENTO_LABELS } from '@/lib/tipos-atendimento'
 import type { AtendimentoRecord } from '@/lib/types'
 
 // Endpoint do Dashboard de Monitoramento de Atendimentos.
@@ -41,6 +42,7 @@ type RowSubset = Pick<
   | 'problema_relatado'
   | 'transcricao'
   | 'problema_extraido'
+  | 'tipo_atendimento'
 >
 
 export async function GET(request: NextRequest) {
@@ -60,7 +62,7 @@ export async function GET(request: NextRequest) {
   // esgotar (rows < BATCH_SIZE) ou bater o freio defensivo MAX_TOTAL_ROWS.
   // Os mesmos filtros são re-aplicados em cada batch.
   const SELECT_COLS =
-    'id, status, criado_em, data_hora_chegada, problema_relatado, transcricao, problema_extraido'
+    'id, status, criado_em, data_hora_chegada, problema_relatado, transcricao, problema_extraido, tipo_atendimento'
   const rows: RowSubset[] = []
   let totalCount = 0
   let truncated = false
@@ -188,21 +190,46 @@ export async function GET(request: NextRequest) {
   )
 
   // ── topMotivos + worstMotivos ─────────────────────────────────────
+  // Regra híbrida: se o atendimento tem `tipo_atendimento` (preenchido
+  // pelo classificador AI do n8n), usa o LABEL desse tipo. Senão, cai
+  // no regex via classifyMotivo() — mantém os atendimentos antigos
+  // (pré-n8n) categorizados sem reprocessar.
+  //
+  // Resultado: novos atendimentos aparecem nas categorias do n8n
+  // (Notas NFe/NFCe, Boleto/Mensalidade, etc), antigos seguem nas
+  // categorias regex (NF-e Rejeitada, Erro Emissão NF-e, etc).
   const motivoStats = new Map<
     string,
     { motivo: string; total: number; resolvidos: number; parcialmente: number; transferidos: number }
   >()
-  // Inicializa todos os buckets com zero pra ordenação estável
+  // Inicializa só os buckets regex pra ordenação estável; os buckets
+  // de tipo_atendimento são criados sob demanda quando aparecem.
   for (const cat of MOTIVO_CATEGORIES) {
     motivoStats.set(cat, { motivo: cat, total: 0, resolvidos: 0, parcialmente: 0, transferidos: 0 })
   }
-  for (const r of rows) {
-    const motivo = classifyMotivo({
+
+  function getMotivoLabel(r: RowSubset): string {
+    // 1. Prioridade: tipo_atendimento preenchido pelo n8n AI
+    const tipo = (r.tipo_atendimento ?? '').trim()
+    if (tipo && TIPO_ATENDIMENTO_LABELS[tipo]) {
+      return TIPO_ATENDIMENTO_LABELS[tipo]
+    }
+    // 2. Fallback: regex em problema_relatado + transcricao
+    return classifyMotivo({
       problema_relatado: r.problema_relatado,
       transcricao: r.transcricao,
       problema_extraido: r.problema_extraido as RowSubset['problema_extraido'],
     })
-    const bucket = motivoStats.get(motivo)!
+  }
+
+  for (const r of rows) {
+    const motivo = getMotivoLabel(r)
+    let bucket = motivoStats.get(motivo)
+    if (!bucket) {
+      // Bucket de tipo_atendimento ainda não existia — cria sob demanda.
+      bucket = { motivo, total: 0, resolvidos: 0, parcialmente: 0, transferidos: 0 }
+      motivoStats.set(motivo, bucket)
+    }
     bucket.total++
     if (r.status === 'resolvida_ia') bucket.resolvidos++
     else if (r.status === 'resolvido_parcialmente') bucket.parcialmente++

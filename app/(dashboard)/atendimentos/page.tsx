@@ -521,7 +521,7 @@ export default function AtendimentosPage() {
 
       {/* Stats — números globais respeitando os filtros atuais (todas as
           páginas, não só a atual). Vêm do endpoint /atendimentos/stats. */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
         <StatCard icon={<Headphones size={18} />} label="Total" value={String(stats.total)} />
         <StatCard
           icon={<CheckCircle2 size={18} />}
@@ -550,6 +550,16 @@ export default function AtendimentosPage() {
               : '—'
           }
           accent="green"
+        />
+        <StatCard
+          icon={<Percent size={18} />}
+          label="% Resol. + Parcial"
+          value={
+            stats.total > 0
+              ? `${Math.round(((stats.resolvida_ia + stats.resolvido_parcialmente) / stats.total) * 100)}%`
+              : '—'
+          }
+          accent="emerald"
         />
       </div>
 

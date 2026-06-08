@@ -279,6 +279,8 @@ export default function AtendimentosPage() {
   const [toDate, setToDate] = useState('')
   const [hourFilter, setHourFilter] = useState<'all' | string>('all')
   const [sentimentoFilter, setSentimentoFilter] = useState<SentimentoFilter>('all')
+  const [pdvFilter, setPdvFilter] = useState('')
+  const [pdvOptions, setPdvOptions] = useState<string[]>([])
 
   // Aplica um preset de período. Para 'custom', mantém as datas atuais
   // (apenas habilita a edição manual). Para os demais, calcula e seta.
@@ -307,6 +309,13 @@ export default function AtendimentosPage() {
   // o spinner global (load silencioso evita "flash" da tabela).
   const [refreshing, setRefreshing] = useState(false)
 
+  useEffect(() => {
+    fetch('/api/atendimentos/pdvs')
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d?.pdvs)) setPdvOptions(d.pdvs) })
+      .catch(() => {})
+  }, [])
+
   // Debounce da busca (evita request a cada tecla)
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim()), 350)
@@ -326,6 +335,7 @@ export default function AtendimentosPage() {
     hourFilter,
     sentimentoFilter,
     searchDebounced,
+    pdvFilter,
   ])
 
   // Constrói os params compartilhados entre /atendimentos e /atendimentos/stats
@@ -336,6 +346,7 @@ export default function AtendimentosPage() {
       if (destinoFilter !== 'all') params.set('destino', destinoFilter)
       if (tipoContatoFilter !== 'all') params.set('tipo_contato', tipoContatoFilter)
       if (sentimentoFilter !== 'all') params.set('sentimento', sentimentoFilter)
+      if (pdvFilter) params.set('pdv', pdvFilter)
       if (comProblema) params.set('com_problema', 'true')
       if (searchDebounced) params.set('search', searchDebounced)
       const { from, to } = buildDateRange(fromDate, toDate, hourFilter)
@@ -352,6 +363,7 @@ export default function AtendimentosPage() {
       destinoFilter,
       tipoContatoFilter,
       sentimentoFilter,
+      pdvFilter,
       comProblema,
       searchDebounced,
       fromDate,
@@ -619,6 +631,19 @@ export default function AtendimentosPage() {
           <option value="neutro">Neutro</option>
           <option value="negativo">Negativo</option>
         </select>
+
+        {pdvOptions.length > 0 && (
+          <select
+            value={pdvFilter}
+            onChange={(e) => setPdvFilter(e.target.value)}
+            className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
+          >
+            <option value="">Todos PDVs</option>
+            {pdvOptions.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        )}
 
         {/* Preset de período. Define rapidamente o intervalo De/Até.
             "Personalizado" libera os inputs abaixo pra edição manual. */}

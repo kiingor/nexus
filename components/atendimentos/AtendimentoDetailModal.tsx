@@ -892,55 +892,56 @@ function useMensagens(atendimentoId: number | null) {
   const [erro, setErro] = useState<string | null>(null)
 
   useEffect(() => {
-    if (atendimentoId == null) {
-      setMessages(null)
-      setErro(null)
-      return
-    }
+    // Sem id (atendimento de ligação) não há o que buscar — o resultado é
+    // neutralizado no return, sem setState dentro do effect.
+    if (atendimentoId == null) return
 
     let cancelado = false
-    setLoading(true)
-    setErro(null)
 
-    fetch(`/api/atendimentos/${atendimentoId}/mensagens`)
-      .then(async (r) => {
+    async function carregar(id: number) {
+      setLoading(true)
+      setErro(null)
+      try {
+        const r = await fetch(`/api/atendimentos/${id}/mensagens`)
         const json = await r.json().catch(() => ({}))
         if (cancelado) return
+
         if (!r.ok) {
           setErro(json?.error ?? 'Falha ao carregar a conversa')
           setMessages(null)
           return
         }
+
         const rows: MensagemRow[] = json?.mensagens ?? []
-        if (rows.length === 0) {
-          setMessages(null)
-          return
-        }
         setMessages(
-          rows.map((m) => ({
-            key: m.id,
-            // bot-nexus é a IA; cliente-nexus é o cliente.
-            speaker: m.remetente === 'cliente-nexus' ? 'Cliente' : 'Nexus',
-            isClient: m.remetente === 'cliente-nexus',
-            text: m.conteudo ?? '',
-            hora: formatHora(m.enviado_em),
-            url: m.url_imagem,
-            mediaType: m.media_type,
-          }))
+          rows.length === 0
+            ? null
+            : rows.map((m) => ({
+                key: m.id,
+                // bot-nexus é a IA; cliente-nexus é o cliente.
+                speaker: m.remetente === 'cliente-nexus' ? 'Cliente' : 'Nexus',
+                isClient: m.remetente === 'cliente-nexus',
+                text: m.conteudo ?? '',
+                hora: formatHora(m.enviado_em),
+                url: m.url_imagem,
+                mediaType: m.media_type,
+              }))
         )
-      })
-      .catch(() => {
+      } catch {
         if (!cancelado) setErro('Falha ao carregar a conversa')
-      })
-      .finally(() => {
+      } finally {
         if (!cancelado) setLoading(false)
-      })
+      }
+    }
+
+    carregar(atendimentoId)
 
     return () => {
       cancelado = true
     }
   }, [atendimentoId])
 
+  if (atendimentoId == null) return { messages: null, loading: false, erro: null }
   return { messages, loading, erro }
 }
 
@@ -1056,7 +1057,19 @@ function TranscricaoBlock({
   const [copied, setCopied] = useState(false)
   const remote = useMensagens(isChat ? atendimentoId : null)
 
-  if (!hasFormatada && !hasOriginal && !remote.loading && !remote.messages) {
+  // Chat sem conversa no banco não cai mais na transcrição — mostra o
+  // motivo, senão o operador acha que a conversa foi essa.
+  if (isChat && !remote.loading && !remote.messages) {
+    return (
+      <Section title="Conversa">
+        <p className="text-sm text-secondary">
+          {remote.erro ?? 'Nenhuma mensagem encontrada para este atendimento.'}
+        </p>
+      </Section>
+    )
+  }
+
+  if (!isChat && !hasFormatada && !hasOriginal) {
     return (
       <Section title="Transcrição">
         <p className="text-sm text-secondary">Transcrição indisponível.</p>
@@ -1066,33 +1079,18 @@ function TranscricaoBlock({
 
   const showing = view === 'formatada' && hasFormatada ? formatada : original
   const text = String(showing ?? '')
-  // Para chat sempre renderiza a partir do texto bruto (transcricao),
-  // que é onde vem a estrutura "Speaker: ...".
-  const chatSource = isChat ? String(original ?? '') : text
-  // A conversa de chat vem do banco de mensagens; a transcrição em texto
-  // fica só como fallback (registros antigos ou cliente não encontrado).
-  const fallbackMessages: ChatMsg[] = isChat
-    ? parseTranscricao(chatSource).map((m, i) => ({
-        key: `t${i}`,
-        speaker: m.speaker,
-        isClient: m.isClient,
-        text: m.text,
-        hora: null,
-        url: null,
-        mediaType: null,
-      }))
-    : []
-  const messages = isChat && remote.messages ? remote.messages : fallbackMessages
+  // Em chat a conversa vem SÓ do banco de mensagens — a transcrição em
+  // texto é ignorada de propósito (vinha truncada e sem hora/anexos).
+  // Ligação continua na transcrição, que lá é a única fonte.
+  const messages = isChat ? (remote.messages ?? []) : []
   const showBubbles = isChat && messages.length > 0
 
   async function copyAll() {
     // Na conversa vinda do banco de mensagens não existe "texto original",
     // então remonta o "Speaker: texto" a partir das bolhas.
-    const chatText = remote.messages
-      ? remote.messages
-          .map((m) => `${m.speaker}: ${m.text || `[${m.mediaType ?? 'anexo'}]`}`)
-          .join('\n')
-      : chatSource
+    const chatText = (remote.messages ?? [])
+      .map((m) => `${m.speaker}: ${m.text || `[${m.mediaType ?? 'anexo'}]`}`)
+      .join('\n')
 
     try {
       await navigator.clipboard.writeText(isChat ? chatText : text)
@@ -1136,9 +1134,7 @@ function TranscricaoBlock({
             {isChat
               ? remote.loading
                 ? 'Carregando conversa…'
-                : remote.messages
-                  ? `Conversa · ${remote.messages.length} mensagens`
-                  : 'Conversa (transcrição)'
+                : `Conversa · ${messages.length} mensagens`
               : hasFormatada
                 ? 'Formatada'
                 : 'Original (Supabase)'}

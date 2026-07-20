@@ -851,6 +851,191 @@ function Section({
   )
 }
 
+// Mensagem já normalizada pra renderização — serve tanto pro que vem do
+// banco de mensagens quanto pro fallback parseado da transcrição em texto.
+type ChatMsg = {
+  key: string
+  speaker: string
+  isClient: boolean
+  text: string
+  hora: string | null
+  url: string | null
+  mediaType: string | null
+}
+
+type MensagemRow = {
+  id: string
+  remetente: string
+  conteudo: string | null
+  enviado_em: string | null
+  url_imagem: string | null
+  media_type: string | null
+}
+
+function formatHora(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Sao_Paulo',
+  })
+}
+
+// Busca a conversa no banco secundário (public.mensagens). `null` em
+// `messages` significa "não veio nada utilizável" — aí a UI cai no texto da
+// transcrição.
+function useMensagens(atendimentoId: number | null) {
+  const [messages, setMessages] = useState<ChatMsg[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (atendimentoId == null) {
+      setMessages(null)
+      setErro(null)
+      return
+    }
+
+    let cancelado = false
+    setLoading(true)
+    setErro(null)
+
+    fetch(`/api/atendimentos/${atendimentoId}/mensagens`)
+      .then(async (r) => {
+        const json = await r.json().catch(() => ({}))
+        if (cancelado) return
+        if (!r.ok) {
+          setErro(json?.error ?? 'Falha ao carregar a conversa')
+          setMessages(null)
+          return
+        }
+        const rows: MensagemRow[] = json?.mensagens ?? []
+        if (rows.length === 0) {
+          setMessages(null)
+          return
+        }
+        setMessages(
+          rows.map((m) => ({
+            key: m.id,
+            // bot-nexus é a IA; cliente-nexus é o cliente.
+            speaker: m.remetente === 'cliente-nexus' ? 'Cliente' : 'Nexus',
+            isClient: m.remetente === 'cliente-nexus',
+            text: m.conteudo ?? '',
+            hora: formatHora(m.enviado_em),
+            url: m.url_imagem,
+            mediaType: m.media_type,
+          }))
+        )
+      })
+      .catch(() => {
+        if (!cancelado) setErro('Falha ao carregar a conversa')
+      })
+      .finally(() => {
+        if (!cancelado) setLoading(false)
+      })
+
+    return () => {
+      cancelado = true
+    }
+  }, [atendimentoId])
+
+  return { messages, loading, erro }
+}
+
+// O `tipo` da tabela vem como 'imagem' pra qualquer anexo — quem diz o
+// formato real é o media_type. Quando ele falta, cai na extensão da URL.
+function resolveKind(url: string, mediaType: string | null) {
+  const mt = (mediaType ?? '').toLowerCase()
+  if (mt.startsWith('image/')) return 'image'
+  if (mt.startsWith('video/')) return 'video'
+  if (mt.startsWith('audio/')) return 'audio'
+
+  const ext = /\.([a-z0-9]{2,5})(?:\?|$)/i.exec(url)?.[1]?.toLowerCase() ?? ''
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) return 'image'
+  if (['mp4', 'mov', 'webm', 'mkv', '3gp'].includes(ext)) return 'video'
+  if (['ogg', 'oga', 'mp3', 'm4a', 'wav', 'opus'].includes(ext)) return 'audio'
+  return 'file'
+}
+
+function AbrirLink({ url, label }: { url: string; label: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="mt-1 inline-flex items-center gap-1.5 text-xs underline decoration-dotted opacity-90 hover:opacity-100"
+    >
+      <FileText size={12} />
+      {label}
+    </a>
+  )
+}
+
+function MediaAttachment({
+  url,
+  mediaType,
+}: {
+  url: string
+  mediaType: string | null
+}) {
+  // Vídeo/áudio do WhatsApp nem sempre tocam inline no navegador (codec ou
+  // moov atom no fim do arquivo). Em vez de deixar um player quebrado, cai
+  // pro link de abrir em nova aba.
+  const [falhou, setFalhou] = useState(false)
+  const kind = resolveKind(url, mediaType)
+  const common = 'mt-1 rounded-xl max-w-full border border-white/10'
+
+  if (falhou) {
+    return <AbrirLink url={url} label={`Abrir ${kind === 'file' ? 'arquivo' : kind}`} />
+  }
+
+  if (kind === 'image') {
+    return (
+      <a href={url} target="_blank" rel="noreferrer">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt="Anexo"
+          onError={() => setFalhou(true)}
+          className={`${common} max-h-64 object-contain`}
+        />
+      </a>
+    )
+  }
+
+  if (kind === 'video') {
+    return (
+      <div className="mt-1">
+        <video
+          src={url}
+          controls
+          playsInline
+          preload="metadata"
+          onError={() => setFalhou(true)}
+          className={`${common} max-h-64 w-full bg-black/40`}
+        />
+        <AbrirLink url={url} label="Abrir vídeo em nova aba" />
+      </div>
+    )
+  }
+
+  if (kind === 'audio') {
+    return (
+      <audio
+        src={url}
+        controls
+        preload="metadata"
+        onError={() => setFalhou(true)}
+        className="mt-1 w-full"
+      />
+    )
+  }
+
+  return <AbrirLink url={url} label={mediaType || 'Arquivo'} />
+}
+
 function TranscricaoBlock({
   formatada,
   original,
@@ -869,8 +1054,9 @@ function TranscricaoBlock({
     hasFormatada ? 'formatada' : 'original'
   )
   const [copied, setCopied] = useState(false)
+  const remote = useMensagens(isChat ? atendimentoId : null)
 
-  if (!hasFormatada && !hasOriginal) {
+  if (!hasFormatada && !hasOriginal && !remote.loading && !remote.messages) {
     return (
       <Section title="Transcrição">
         <p className="text-sm text-secondary">Transcrição indisponível.</p>
@@ -883,12 +1069,33 @@ function TranscricaoBlock({
   // Para chat sempre renderiza a partir do texto bruto (transcricao),
   // que é onde vem a estrutura "Speaker: ...".
   const chatSource = isChat ? String(original ?? '') : text
-  const messages = isChat ? parseTranscricao(chatSource) : []
+  // A conversa de chat vem do banco de mensagens; a transcrição em texto
+  // fica só como fallback (registros antigos ou cliente não encontrado).
+  const fallbackMessages: ChatMsg[] = isChat
+    ? parseTranscricao(chatSource).map((m, i) => ({
+        key: `t${i}`,
+        speaker: m.speaker,
+        isClient: m.isClient,
+        text: m.text,
+        hora: null,
+        url: null,
+        mediaType: null,
+      }))
+    : []
+  const messages = isChat && remote.messages ? remote.messages : fallbackMessages
   const showBubbles = isChat && messages.length > 0
 
   async function copyAll() {
+    // Na conversa vinda do banco de mensagens não existe "texto original",
+    // então remonta o "Speaker: texto" a partir das bolhas.
+    const chatText = remote.messages
+      ? remote.messages
+          .map((m) => `${m.speaker}: ${m.text || `[${m.mediaType ?? 'anexo'}]`}`)
+          .join('\n')
+      : chatSource
+
     try {
-      await navigator.clipboard.writeText(isChat ? chatSource : text)
+      await navigator.clipboard.writeText(isChat ? chatText : text)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {
@@ -926,7 +1133,15 @@ function TranscricaoBlock({
           </div>
         ) : (
           <span className="text-[11px] uppercase tracking-wider text-secondary">
-            {isChat ? 'Conversa' : hasFormatada ? 'Formatada' : 'Original (Supabase)'}
+            {isChat
+              ? remote.loading
+                ? 'Carregando conversa…'
+                : remote.messages
+                  ? `Conversa · ${remote.messages.length} mensagens`
+                  : 'Conversa (transcrição)'
+              : hasFormatada
+                ? 'Formatada'
+                : 'Original (Supabase)'}
           </span>
         )}
 
@@ -961,7 +1176,7 @@ function ChatBubbles({
   messages,
   atendimentoId,
 }: {
-  messages: import('@/lib/atendimentos').TranscricaoMessage[]
+  messages: ChatMsg[]
   atendimentoId: number
 }) {
   const [vincularTarget, setVincularTarget] = useState<{
@@ -981,7 +1196,7 @@ function ChatBubbles({
           const canVincular = m.isClient && (m.text || '').trim().length > 3
           return (
             <div
-              key={idx}
+              key={m.key}
               className={`flex group ${m.isClient ? 'justify-start' : 'justify-end'}`}
             >
               <div className={`max-w-[78%] ${m.isClient ? '' : 'items-end'} relative`}>
@@ -1003,7 +1218,17 @@ function ChatBubbles({
                       : 'bg-orange-500/10 border-orange-500/30 text-orange-50 rounded-2xl rounded-br-sm'
                   }`}
                 >
-                  {m.text || '—'}
+                  {m.text || (m.url ? '' : '—')}
+                  {m.url && <MediaAttachment url={m.url} mediaType={m.mediaType} />}
+                  {m.hora && (
+                    <span
+                      className={`block text-[10px] mt-1 opacity-60 ${
+                        m.isClient ? 'text-left' : 'text-right'
+                      }`}
+                    >
+                      {m.hora}
+                    </span>
+                  )}
                 </div>
                 {canVincular && (
                   <button

@@ -112,6 +112,14 @@ export async function POST(request: NextRequest) {
       // A saída é a última mensagem trocada, seja de quem for.
       const ultima = mensagens[mensagens.length - 1]?.enviado_em ?? sel.fim
 
+      // Anexos enviados pelo cliente (comprovante de pagamento, print do
+      // erro, PDF). Só os do cliente interessam — o que o bot manda não é
+      // comprovante de nada. Limita a 3 pra não estourar o campo.
+      const comprovantes = mensagens
+        .filter((m) => m.remetente === 'cliente-nexus' && m.url_imagem)
+        .map((m) => m.url_imagem as string)
+        .slice(0, 3)
+
       itens.push({
         cliente_id: sel.cliente_id,
         transcricao_completa: transcricao,
@@ -122,7 +130,7 @@ export async function POST(request: NextRequest) {
         SolicitadoPor: cli?.nome ?? '',
         registro: '',
         id_chat: '',
-        comprovante_url: '',
+        comprovante_url: comprovantes.join(' '),
         atendente: ATENDENTE,
         suporte_id: SUPORTE_ID,
       })

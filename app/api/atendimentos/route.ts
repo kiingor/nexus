@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
   const sentimento = searchParams.get('sentimento') // positivo | neutro | negativo
   const tipoContato = searchParams.get('tipo_contato')  // 'ligacao' | 'chat'
   const pdv = searchParams.get('pdv')
+  const tipoAtendimento = searchParams.get('tipo_atendimento') // classificação do n8n
 
   // Ordena por criado_em desc, nulos no fim, fallback por id.
   // tipo_contato agora é coluna direta em atendimentos, então select('*')
@@ -47,6 +48,7 @@ export async function GET(request: NextRequest) {
   if (tipoContato === 'ligacao' || tipoContato === 'chat')
     query = query.eq('tipo_contato', tipoContato)
   if (pdv) query = query.eq('pdv', pdv)
+  if (tipoAtendimento) query = query.eq('tipo_atendimento', tipoAtendimento)
 
   // Busca: ILIKE em múltiplas colunas. Se o termo for puramente numérico,
   // também tenta casar com id (cast pra texto).

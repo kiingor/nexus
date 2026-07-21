@@ -6,6 +6,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { AtendimentosList } from '@/components/atendimentos/AtendimentosList'
 import { AtendimentoDetailModal } from '@/components/atendimentos/AtendimentoDetailModal'
 import { AtendimentosTabs } from '@/components/atendimentos/AtendimentosTabs'
+import { TIPO_ATENDIMENTO_LABELS } from '@/lib/tipos-atendimento'
 import Link from 'next/link'
 import {
   Headphones,
@@ -168,7 +169,7 @@ type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
 type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
 // Presets de período. 'custom' libera os inputs De/Até pro usuário editar.
 // 'mes' = últimos 30 dias (renomeado de '30d' por critério de aceitação).
-type PeriodPreset = 'todos' | 'hoje' | '3d' | '7d' | '15d' | 'mes' | 'custom'
+type PeriodPreset = 'todos' | 'hoje' | 'ontem' | '3d' | '7d' | '15d' | 'mes' | 'custom'
 
 // Converte um Date local pra string YYYY-MM-DD (formato esperado pelo input
 // type="date"). Usa componentes locais — NÃO toISOString — pra evitar drift
@@ -188,6 +189,15 @@ function resolvePreset(preset: PeriodPreset): { from: string; to: string } | nul
   const today = new Date()
   const to = toLocalDateStr(today)
   if (preset === 'hoje') return { from: to, to }
+
+  // Ontem é dia único (De = Até), não um intervalo até hoje.
+  if (preset === 'ontem') {
+    const ontem = new Date(today)
+    ontem.setDate(ontem.getDate() - 1)
+    const dia = toLocalDateStr(ontem)
+    return { from: dia, to: dia }
+  }
+
   const daysBack =
     preset === '3d' ? 2 : preset === '7d' ? 6 : preset === '15d' ? 14 : 29 // 'mes'
   const start = new Date(today)
@@ -280,6 +290,8 @@ export default function AtendimentosPage() {
   const [hourFilter, setHourFilter] = useState<'all' | string>('all')
   const [sentimentoFilter, setSentimentoFilter] = useState<SentimentoFilter>('all')
   const [pdvFilter, setPdvFilter] = useState('')
+  // Classificação vinda do n8n (cadastros, pix, sped...). Vazio = todos.
+  const [tipoAtendimentoFilter, setTipoAtendimentoFilter] = useState('')
   const [pdvOptions, setPdvOptions] = useState<string[]>([])
 
   // Aplica um preset de período. Para 'custom', mantém as datas atuais
@@ -336,6 +348,7 @@ export default function AtendimentosPage() {
     sentimentoFilter,
     searchDebounced,
     pdvFilter,
+    tipoAtendimentoFilter,
   ])
 
   // Constrói os params compartilhados entre /atendimentos e /atendimentos/stats
@@ -347,6 +360,7 @@ export default function AtendimentosPage() {
       if (tipoContatoFilter !== 'all') params.set('tipo_contato', tipoContatoFilter)
       if (sentimentoFilter !== 'all') params.set('sentimento', sentimentoFilter)
       if (pdvFilter) params.set('pdv', pdvFilter)
+      if (tipoAtendimentoFilter) params.set('tipo_atendimento', tipoAtendimentoFilter)
       if (comProblema) params.set('com_problema', 'true')
       if (searchDebounced) params.set('search', searchDebounced)
       const { from, to } = buildDateRange(fromDate, toDate, hourFilter)
@@ -364,6 +378,7 @@ export default function AtendimentosPage() {
       tipoContatoFilter,
       sentimentoFilter,
       pdvFilter,
+      tipoAtendimentoFilter,
       comProblema,
       searchDebounced,
       fromDate,
@@ -632,6 +647,24 @@ export default function AtendimentosPage() {
           <option value="negativo">Negativo</option>
         </select>
 
+        {/* Tipo de atendimento — classificação que o n8n grava em
+            `tipo_atendimento`. Ordenado por label pra achar no olho. */}
+        <select
+          value={tipoAtendimentoFilter}
+          onChange={(e) => setTipoAtendimentoFilter(e.target.value)}
+          title="Tipo de atendimento"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
+        >
+          <option value="">Todos os tipos de atendimento</option>
+          {Object.entries(TIPO_ATENDIMENTO_LABELS)
+            .sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'))
+            .map(([codigo, label]) => (
+              <option key={codigo} value={codigo}>
+                {label}
+              </option>
+            ))}
+        </select>
+
         {pdvOptions.length > 0 && (
           <select
             value={pdvFilter}
@@ -655,6 +688,7 @@ export default function AtendimentosPage() {
         >
           <option value="todos">Todo o período</option>
           <option value="hoje">Hoje</option>
+          <option value="ontem">Ontem</option>
           <option value="3d">Últimos 3 dias</option>
           <option value="7d">Últimos 7 dias</option>
           <option value="15d">Últimos 15 dias</option>

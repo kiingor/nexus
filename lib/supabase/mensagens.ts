@@ -102,6 +102,77 @@ export async function findClienteId(input: {
   return null
 }
 
+// Varredura de um período inteiro, só com o mínimo pra agrupar conversas
+// por cliente. Pagina de 1000 em 1000 (teto do PostgREST) até `maxRows`.
+export type MensagemResumo = {
+  cliente_id: string
+  remetente: string
+  enviado_em: string
+}
+
+export async function listMensagensNoPeriodo(
+  from: string,
+  to: string,
+  maxRows = 200_000
+): Promise<{ rows: MensagemResumo[]; truncated: boolean }> {
+  const supabase = getMensagensClient()
+  if (!supabase) return { rows: [], truncated: false }
+
+  const PAGINA = 1000
+  const rows: MensagemResumo[] = []
+
+  for (let offset = 0; offset < maxRows; offset += PAGINA) {
+    const { data, error } = await supabase
+      .from('mensagens')
+      .select('cliente_id, remetente, enviado_em')
+      .in('remetente', REMETENTES_NEXUS)
+      .not('cliente_id', 'is', null)
+      .gte('enviado_em', from)
+      .lte('enviado_em', to)
+      .order('enviado_em', { ascending: true })
+      .range(offset, offset + PAGINA - 1)
+
+    if (error) throw new Error(error.message)
+
+    const lote = (data ?? []) as MensagemResumo[]
+    rows.push(...lote)
+    if (lote.length < PAGINA) return { rows, truncated: false }
+  }
+
+  return { rows, truncated: true }
+}
+
+// Dados de cadastro dos clientes, em lotes — um `in.()` com centenas de
+// UUIDs estoura o tamanho da URL.
+export type ClienteResumo = {
+  id: string
+  nome: string | null
+  telefone: string | null
+  CNPJ: string | null
+  PDV: string | null
+}
+
+export async function listClientesByIds(
+  ids: string[]
+): Promise<Map<string, ClienteResumo>> {
+  const supabase = getMensagensClient()
+  const mapa = new Map<string, ClienteResumo>()
+  if (!supabase || ids.length === 0) return mapa
+
+  const LOTE = 80
+  for (let i = 0; i < ids.length; i += LOTE) {
+    const { data, error } = await supabase
+      .from('clientes')
+      .select('id, nome, telefone, CNPJ, PDV')
+      .in('id', ids.slice(i, i + LOTE))
+
+    if (error) throw new Error(error.message)
+    for (const c of (data ?? []) as ClienteResumo[]) mapa.set(c.id, c)
+  }
+
+  return mapa
+}
+
 // Instantes de encerramento de ticket do cliente dentro de uma janela.
 // Cada encerramento fecha um atendimento: a mensagem seguinte já pertence
 // ao próximo (é o estado "Sem ticket" da conversa com a IA).

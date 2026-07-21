@@ -68,6 +68,10 @@ function applyFilters<T extends FilterableQuery<T>>(
   if (tipoContato === 'ligacao' || tipoContato === 'chat')
     q = q.eq('tipo_contato', tipoContato)
 
+  // Mesmo filtro da Lista, pra que os cards batam com a tabela.
+  const tipoAtendimento = searchParams.get('tipo_atendimento')
+  if (tipoAtendimento) q = q.eq('tipo_atendimento', tipoAtendimento)
+
   if (search) {
     const escaped = search.replace(/[%_]/g, '\\$&')
     const pat = `%${escaped}%`

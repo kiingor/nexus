@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BarChart3, List } from 'lucide-react'
+import { BarChart3, List, PhoneOff } from 'lucide-react'
 
 // Barra de abas compartilhada entre /atendimentos (Lista) e
 // /atendimentos/dashboard (Dashboard de Monitoramento).
@@ -13,8 +13,11 @@ export function AtendimentosTabs() {
   const pathname = usePathname()
 
   const tabs = [
-    { href: '/atendimentos',           label: 'Lista',     icon: List },
-    { href: '/atendimentos/dashboard', label: 'Dashboard', icon: BarChart3 },
+    { href: '/atendimentos',             label: 'Lista',        icon: List },
+    { href: '/atendimentos/dashboard',   label: 'Dashboard',    icon: BarChart3 },
+    // Conversas que não viraram atendimento — não se misturam com as
+    // resolvidas/transferidas porque nem chegaram a existir na tabela.
+    { href: '/atendimentos/abandonados', label: 'Abandonados',  icon: PhoneOff },
   ] as const
 
   return (

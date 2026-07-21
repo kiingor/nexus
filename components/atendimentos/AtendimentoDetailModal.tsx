@@ -1057,14 +1057,60 @@ function TranscricaoBlock({
   const [copied, setCopied] = useState(false)
   const remote = useMensagens(isChat ? atendimentoId : null)
 
-  // Chat sem conversa no banco não cai mais na transcrição — mostra o
-  // motivo, senão o operador acha que a conversa foi essa.
-  if (isChat && !remote.loading && !remote.messages) {
+  // Enquanto a conversa carrega, spinner — nunca o texto cru da
+  // transcrição, que aparecia por 1-3s e depois era substituído pelas
+  // bolhas, dando a impressão de que a tela "piscava".
+  if (isChat && remote.loading) {
     return (
       <Section title="Conversa">
-        <p className="text-sm text-secondary">
-          {remote.erro ?? 'Nenhuma mensagem encontrada para este atendimento.'}
+        <div className="flex justify-center py-8">
+          <Spinner />
+        </div>
+      </Section>
+    )
+  }
+
+  // Chat sem vínculo com o banco de mensagens: atendimentos do comercial
+  // vêm sem phone/cnpj, então não há como achar o cliente. Nesses casos a
+  // transcrição é a ÚNICA fonte — mostra, mas deixa claro o que é.
+  if (isChat && !remote.messages) {
+    const bruto = String(original ?? formatada ?? '')
+    if (!bruto.trim()) {
+      return (
+        <Section title="Conversa">
+          <p className="text-sm text-secondary">
+            {remote.erro ?? 'Nenhuma mensagem encontrada para este atendimento.'}
+          </p>
+        </Section>
+      )
+    }
+    // Renderiza em bolhas igual às conversas vinculadas — o que falta aqui
+    // é hora e anexo, que a transcrição em texto não tem.
+    const daTranscricao: ChatMsg[] = parseTranscricao(bruto).map((m, i) => ({
+      key: `t${i}`,
+      speaker: m.speaker,
+      isClient: m.isClient,
+      text: m.text,
+      hora: null,
+      url: null,
+      mediaType: null,
+    }))
+
+    return (
+      <Section title="Conversa">
+        <p
+          title="Este atendimento não tem telefone nem CNPJ, então não foi possível localizar a conversa no banco de mensagens."
+          className="text-[11px] uppercase tracking-wider text-yellow-400/90 mb-2"
+        >
+          Transcrição do atendimento · conversa não vinculada
         </p>
+        {daTranscricao.length > 0 ? (
+          <ChatBubbles messages={daTranscricao} atendimentoId={atendimentoId} />
+        ) : (
+          <pre className="text-xs text-secondary bg-glass border border-glass-border rounded-xl p-3 overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-[420px]">
+            {bruto}
+          </pre>
+        )}
       </Section>
     )
   }

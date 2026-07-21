@@ -1,0 +1,164 @@
+import { NextRequest } from 'next/server'
+import {
+  getMensagensClient,
+  listClientesByIds,
+  listMensagensByCliente,
+} from '@/lib/supabase/mensagens'
+
+// Webhook do fluxo `abrir_ocorrencia_massa` no n8n.
+const WEBHOOK =
+  process.env.N8N_OCORRENCIA_MASSA_URL ??
+  'https://n8n-webhook.mensageria.softcomtecnologia.com/webhook/criaroc-massa'
+
+// Atendente fixo das ocorrências abertas por esta rotina.
+const ATENDENTE = 'Claudio'
+const SUPORTE_ID = 3127
+
+// Trava de segurança: abrir ocorrência é irreversível do lado da Agenda.
+const MAX_LOTE = 100
+
+// A Agenda espera "yyyy-MM-dd HH:mm:ss" no fuso de Brasília.
+function formatDataHora(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const partes = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(d)
+  return partes.replace('T', ' ')
+}
+
+/**
+ * POST /api/atendimentos/abandonados/ocorrencia
+ *
+ * Abre ocorrência em massa para as conversas abandonadas selecionadas.
+ * Monta o payload (transcrição + dados do cliente) e entrega ao n8n, que
+ * gera motivo/serviço realizado por IA, abre e finaliza a ocorrência na
+ * Agenda e cria o registro em `atendimentos`.
+ *
+ * Body: { clientes: [{ cliente_id, inicio, fim }] }
+ */
+export async function POST(request: NextRequest) {
+  if (!getMensagensClient()) {
+    return Response.json(
+      { error: 'Banco de mensagens não configurado' },
+      { status: 503 }
+    )
+  }
+
+  let body: { clientes?: Array<{ cliente_id: string; inicio: string; fim: string }> }
+  try {
+    body = await request.json()
+  } catch {
+    return Response.json({ error: 'JSON inválido' }, { status: 400 })
+  }
+
+  const selecionados = (body.clientes ?? []).filter(
+    (c) => c?.cliente_id && c?.inicio && c?.fim
+  )
+
+  if (selecionados.length === 0) {
+    return Response.json({ error: 'Nenhuma conversa selecionada' }, { status: 400 })
+  }
+  if (selecionados.length > MAX_LOTE) {
+    return Response.json(
+      { error: `Máximo de ${MAX_LOTE} ocorrências por vez` },
+      { status: 400 }
+    )
+  }
+
+  try {
+    const clientes = await listClientesByIds(selecionados.map((c) => c.cliente_id))
+
+    const itens = []
+    const semMensagens: string[] = []
+
+    for (const sel of selecionados) {
+      // Mesma folga usada no modal, pra não cortar a conversa na borda.
+      const mensagens = await listMensagensByCliente(sel.cliente_id, {
+        from: new Date(Date.parse(sel.inicio) - 60_000).toISOString(),
+        to: new Date(Date.parse(sel.fim) + 60_000).toISOString(),
+      })
+
+      if (mensagens.length === 0) {
+        semMensagens.push(sel.cliente_id)
+        continue
+      }
+
+      // Formato "Cliente:/Cláudio:" — é o que o fluxo e a IA esperam.
+      const transcricao = mensagens
+        .map((m) => {
+          const quem = m.remetente === 'cliente-nexus' ? 'Cliente' : 'Cláudio'
+          const texto = m.conteudo ?? `[${m.media_type ?? 'anexo'}]`
+          return `${quem}: ${texto}`
+        })
+        .join('\n')
+
+      const cli = clientes.get(sel.cliente_id)
+
+      // A chegada é a primeira fala do CLIENTE — é quando o atendimento
+      // começou de fato. A primeira mensagem da conversa às vezes é do bot
+      // (saudação automática), o que adiantaria a hora sem motivo.
+      const primeiraDoCliente = mensagens.find(
+        (m) => m.remetente === 'cliente-nexus' && m.enviado_em
+      )
+      const chegada = primeiraDoCliente?.enviado_em ?? sel.inicio
+
+      // A saída é a última mensagem trocada, seja de quem for.
+      const ultima = mensagens[mensagens.length - 1]?.enviado_em ?? sel.fim
+
+      itens.push({
+        cliente_id: sel.cliente_id,
+        transcricao_completa: transcricao,
+        DataHoraChegada: formatDataHora(chegada),
+        DataHoraSaida: formatDataHora(ultima),
+        PDV: cli?.PDV ?? '',
+        cnpj: cli?.CNPJ ?? '',
+        SolicitadoPor: cli?.nome ?? '',
+        registro: '',
+        id_chat: '',
+        comprovante_url: '',
+        atendente: ATENDENTE,
+        suporte_id: SUPORTE_ID,
+      })
+    }
+
+    if (itens.length === 0) {
+      return Response.json(
+        { error: 'Nenhuma conversa com mensagens no período', semMensagens },
+        { status: 400 }
+      )
+    }
+
+    const r = await fetch(WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itens }),
+    })
+
+    const texto = await r.text()
+    let resultado: unknown
+    try {
+      resultado = JSON.parse(texto)
+    } catch {
+      resultado = texto
+    }
+
+    if (!r.ok) {
+      return Response.json(
+        { error: `n8n respondeu ${r.status}`, resultado },
+        { status: 502 }
+      )
+    }
+
+    return Response.json({ enviados: itens.length, semMensagens, resultado })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Erro ao abrir ocorrências'
+    return Response.json({ error: msg }, { status: 502 })
+  }
+}

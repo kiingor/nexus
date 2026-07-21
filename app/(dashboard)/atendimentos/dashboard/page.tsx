@@ -13,7 +13,7 @@ import { WorstMotivosTable } from '@/components/atendimentos/dashboard/WorstMoti
 
 // Mesmos presets da Lista, com adições do critério da nova tela:
 // "Hoje, 3 dias, 7 dias, último mês, intervalo personalizado".
-type PeriodPreset = 'todos' | 'hoje' | '3d' | '7d' | '15d' | 'mes' | 'custom'
+type PeriodPreset = 'todos' | 'hoje' | 'ontem' | '3d' | '7d' | '15d' | 'mes' | 'custom'
 
 // Filtros espelhados da aba Lista — pra que o dashboard mostre agregação
 // sobre o MESMO conjunto que aparece na Lista.
@@ -35,6 +35,15 @@ function resolvePreset(preset: PeriodPreset): { from: string; to: string } | nul
   const today = new Date()
   const to = toLocalDateStr(today)
   if (preset === 'hoje') return { from: to, to }
+
+  // Ontem é dia único (De = Até), não um intervalo até hoje.
+  if (preset === 'ontem') {
+    const ontem = new Date(today)
+    ontem.setDate(ontem.getDate() - 1)
+    const dia = toLocalDateStr(ontem)
+    return { from: dia, to: dia }
+  }
+
   const daysBack =
     preset === '3d' ? 2 : preset === '7d' ? 6 : preset === '15d' ? 14 : 29 // 'mes'
   const start = new Date(today)
@@ -265,6 +274,7 @@ export default function AtendimentosDashboardPage() {
         >
           <option value="todos">Todo o período</option>
           <option value="hoje">Hoje</option>
+          <option value="ontem">Ontem</option>
           <option value="3d">Últimos 3 dias</option>
           <option value="7d">Últimos 7 dias</option>
           <option value="15d">Últimos 15 dias</option>

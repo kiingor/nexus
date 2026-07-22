@@ -14,6 +14,8 @@ import {
   ChevronLeft,
   ChevronRight,
   FilePlus2,
+  UserRound,
+  Bot,
 } from 'lucide-react'
 import { AtendimentosTabs } from '@/components/atendimentos/AtendimentosTabs'
 import { ConversaAbandonadaModal } from '@/components/atendimentos/ConversaAbandonadaModal'
@@ -190,6 +192,15 @@ export default function AbandonadosPage() {
   }, [])
 
   const stats = data?.stats
+
+  // Quebra dos abandonados do período por quem falou por último. Usa a
+  // lista completa, não a filtrada — os cards descrevem o período, e são
+  // eles que aplicam o filtro.
+  const porUltimo = useMemo(() => {
+    const todos = data?.abandonados ?? []
+    const cliente = todos.filter((a) => a.ultimo === 'cliente').length
+    return { cliente, nexus: todos.length - cliente }
+  }, [data])
 
   // O servidor devolve por última mensagem desc; a ordenação e o recorte
   // de página são locais — a lista inteira já está em memória.
@@ -391,8 +402,9 @@ export default function AbandonadosPage() {
         <div className="glass p-4 mb-4 text-sm text-orange-300">{resultado}</div>
       )}
 
-      {/* Stats — só os dois números que importam nesta aba. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+      {/* Stats do período. Os dois últimos quebram os abandonados por quem
+          deixou de responder. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard
           icon={<MessageSquare size={18} />}
           label="Conversas no período"
@@ -403,6 +415,28 @@ export default function AbandonadosPage() {
           label="Abandonadas (sem resolução nem transferência)"
           value={String(stats?.abandonados ?? 0)}
           accent="red"
+        />
+        {/* Clicar aplica o filtro correspondente — é a pergunta que o
+            número naturalmente provoca: "quais são esses?". */}
+        <StatCard
+          icon={<UserRound size={18} />}
+          label="Cliente falou por último"
+          value={String(porUltimo.cliente)}
+          accent="blue"
+          ativo={ultimoFiltro === 'cliente'}
+          onClick={() =>
+            setUltimoFiltro((f) => (f === 'cliente' ? 'todos' : 'cliente'))
+          }
+        />
+        <StatCard
+          icon={<Bot size={18} />}
+          label="Nexus falou por último"
+          value={String(porUltimo.nexus)}
+          accent="yellow"
+          ativo={ultimoFiltro === 'nexus'}
+          onClick={() =>
+            setUltimoFiltro((f) => (f === 'nexus' ? 'todos' : 'nexus'))
+          }
         />
       </div>
 
@@ -753,11 +787,16 @@ function StatCard({
   label,
   value,
   accent,
+  onClick,
+  ativo,
 }: {
   icon: React.ReactNode
   label: string
   value: string
   accent?: 'green' | 'yellow' | 'red' | 'blue'
+  /** Quando presente, o card vira botão e aplica um filtro. */
+  onClick?: () => void
+  ativo?: boolean
 }) {
   const color =
     accent === 'green'
@@ -770,13 +809,28 @@ function StatCard({
             ? 'text-blue-400'
             : 'text-primary'
 
-  return (
-    <div className="glass p-4">
+  const conteudo = (
+    <>
       <div className="flex items-center gap-2 mb-2 text-muted">
         {icon}
-        <span className="text-xs uppercase tracking-wider">{label}</span>
+        <span className="text-xs uppercase tracking-wider text-left">{label}</span>
       </div>
       <span className={`text-2xl font-bold ${color}`}>{value}</span>
-    </div>
+    </>
+  )
+
+  if (!onClick) return <div className="glass p-4">{conteudo}</div>
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={ativo ? 'Clique para remover o filtro' : 'Clique para filtrar'}
+      className={`glass p-4 text-left transition-colors cursor-pointer hover:border-orange-500/40 ${
+        ativo ? 'ring-1 ring-orange-500/50' : ''
+      }`}
+    >
+      {conteudo}
+    </button>
   )
 }

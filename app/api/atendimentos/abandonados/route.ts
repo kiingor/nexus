@@ -28,6 +28,9 @@ export type AtendimentoAbandonado = {
   fim: string
   total: number
   parado_minutos: number
+  // 'cliente' = a última mensagem foi do cliente e ninguém respondeu;
+  // 'nexus'   = a IA falou por último e o cliente é que não voltou.
+  ultimo: 'cliente' | 'nexus'
 }
 
 // Telefone casa pelos últimos 8 dígitos: os formatos divergem entre os dois
@@ -67,7 +70,12 @@ export async function GET(request: NextRequest) {
     // 1. Todas as mensagens do período, agrupadas por cliente.
     const { rows, truncated } = await listMensagensNoPeriodo(from, to)
 
-    type Conversa = { inicio: number; fim: number; total: number }
+    type Conversa = {
+      inicio: number
+      fim: number
+      total: number
+      ultimoRemetente: string
+    }
     const porCliente = new Map<string, Conversa>()
 
     for (const m of rows) {
@@ -75,11 +83,21 @@ export async function GET(request: NextRequest) {
       if (!Number.isFinite(t)) continue
       const atual = porCliente.get(m.cliente_id)
       if (!atual) {
-        porCliente.set(m.cliente_id, { inicio: t, fim: t, total: 1 })
+        porCliente.set(m.cliente_id, {
+          inicio: t,
+          fim: t,
+          total: 1,
+          ultimoRemetente: m.remetente,
+        })
         continue
       }
       atual.inicio = Math.min(atual.inicio, t)
-      atual.fim = Math.max(atual.fim, t)
+      // Quem falou por último é quem define se a IA deixou o cliente no
+      // vácuo (cliente-nexus) ou se o cliente é que sumiu (bot-nexus).
+      if (t >= atual.fim) {
+        atual.fim = t
+        atual.ultimoRemetente = m.remetente
+      }
       atual.total++
     }
 
@@ -195,6 +213,7 @@ export async function GET(request: NextRequest) {
         fim: new Date(conv.fim).toISOString(),
         total: conv.total,
         parado_minutos: Math.round((agora - conv.fim) / 60000),
+        ultimo: conv.ultimoRemetente === 'cliente-nexus' ? 'cliente' : 'nexus',
       })
     }
 

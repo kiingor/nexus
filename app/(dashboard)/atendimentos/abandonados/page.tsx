@@ -37,7 +37,12 @@ type Abandonado = {
   fim: string
   total: number
   parado_minutos: number
+  ultimo: 'cliente' | 'nexus'
 }
+
+// Quem falou por último separa dois casos bem diferentes: se foi o cliente,
+// a IA deixou no vácuo; se foi a IA, o cliente é que não voltou.
+type UltimoFiltro = 'todos' | 'cliente' | 'nexus'
 
 type Resposta = {
   abandonados: Abandonado[]
@@ -121,6 +126,7 @@ export default function AbandonadosPage() {
   const [selecionado, setSelecionado] = useState<Abandonado | null>(null)
   const [ordem, setOrdem] = useState<Ordem>('recentes')
   const [busca, setBusca] = useState('')
+  const [ultimoFiltro, setUltimoFiltro] = useState<UltimoFiltro>('todos')
   const [page, setPage] = useState(1)
   const [selecao, setSelecao] = useState<Set<string>>(new Set())
   const [abrindo, setAbrindo] = useState(false)
@@ -188,7 +194,11 @@ export default function AbandonadosPage() {
   // O servidor devolve por última mensagem desc; a ordenação e o recorte
   // de página são locais — a lista inteira já está em memória.
   const lista = useMemo(() => {
-    const base = data?.abandonados ?? []
+    const todos = data?.abandonados ?? []
+    const base =
+      ultimoFiltro === 'todos'
+        ? todos
+        : todos.filter((a) => a.ultimo === ultimoFiltro)
 
     // Busca local por empresa, telefone, CNPJ ou PDV. Dígitos são
     // comparados sem máscara, pra achar o CNPJ/telefone digitado de
@@ -213,7 +223,7 @@ export default function AbandonadosPage() {
         ? Date.parse(b.fim) - Date.parse(a.fim)
         : Date.parse(a.fim) - Date.parse(b.fim)
     )
-  }, [data, ordem, busca])
+  }, [data, ordem, busca, ultimoFiltro])
 
   const total = lista.length
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -235,7 +245,7 @@ export default function AbandonadosPage() {
   // nome e marcar mais antes de disparar.
   useEffect(() => {
     setPage(1)
-  }, [busca])
+  }, [busca, ultimoFiltro])
 
   const chaveDe = (a: Abandonado) => a.cliente_id
 
@@ -446,6 +456,17 @@ export default function AbandonadosPage() {
         </div>
 
         <select
+          value={ultimoFiltro}
+          onChange={(e) => setUltimoFiltro(e.target.value as UltimoFiltro)}
+          title="Quem enviou a última mensagem da conversa"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
+        >
+          <option value="todos">Última mensagem: qualquer um</option>
+          <option value="cliente">Cliente falou por último</option>
+          <option value="nexus">Nexus falou por último</option>
+        </select>
+
+        <select
           value={ordem}
           onChange={(e) => setOrdem(e.target.value as Ordem)}
           title="Ordenação pela última mensagem"
@@ -519,6 +540,7 @@ export default function AbandonadosPage() {
                     <th className="px-4 py-3 font-medium">Mensagens</th>
                     <th className="px-4 py-3 font-medium">Início</th>
                     <th className="px-4 py-3 font-medium">Última mensagem</th>
+                    <th className="px-4 py-3 font-medium">Quem falou por último</th>
                     <th className="px-4 py-3 font-medium">Parado há</th>
                   </tr>
                 </thead>
@@ -577,6 +599,22 @@ export default function AbandonadosPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-secondary whitespace-nowrap">
                         {formatDate(a.fim)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span
+                          title={
+                            a.ultimo === 'cliente'
+                              ? 'O cliente mandou a última mensagem e ninguém respondeu'
+                              : 'A IA respondeu por último e o cliente não voltou'
+                          }
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                            a.ultimo === 'cliente'
+                              ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                              : 'bg-orange-500/10 text-orange-400 border-orange-500/30'
+                          }`}
+                        >
+                          {a.ultimo === 'cliente' ? 'Cliente' : 'Nexus'}
+                        </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span

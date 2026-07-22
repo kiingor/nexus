@@ -17,6 +17,13 @@ const SUPORTE_ID = 3127
 // Trava de segurança: abrir ocorrência é irreversível do lado da Agenda.
 const MAX_LOTE = 100
 
+// A função tem 60s na Vercel; cortamos antes pra sobrar tempo de devolver
+// uma mensagem em vez de morrer calada.
+const TIMEOUT_MS = 50_000
+
+// O fluxo do n8n leva alguns segundos por conversa (a IA resume cada uma).
+export const maxDuration = 60
+
 // A Agenda espera "yyyy-MM-dd HH:mm:ss" no fuso de Brasília.
 function formatDataHora(iso: string): string {
   const d = new Date(iso)
@@ -157,11 +164,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const r = await fetch(WEBHOOK, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ itens }),
-    })
+    // Corta antes do teto da função na Vercel, senão a resposta morre sem
+    // mensagem nenhuma e o operador fica sem saber o que aconteceu.
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+
+    let r: Response
+    try {
+      r = await fetch(WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itens }),
+        signal: controller.signal,
+      })
+    } catch (e) {
+      const abortou = e instanceof Error && e.name === 'AbortError'
+      return Response.json(
+        {
+          error: abortou
+            ? `O n8n não respondeu em ${Math.round(TIMEOUT_MS / 1000)}s. As ocorrências podem ter sido abertas assim mesmo — confira no n8n antes de tentar de novo.`
+            : `Não foi possível falar com o n8n: ${e instanceof Error ? e.message : 'erro desconhecido'}`,
+          enviados: itens.length,
+          timeout: abortou,
+        },
+        { status: 504 }
+      )
+    } finally {
+      clearTimeout(timer)
+    }
 
     const texto = await r.text()
     let resultado: unknown
@@ -173,14 +203,45 @@ export async function POST(request: NextRequest) {
 
     if (!r.ok) {
       return Response.json(
-        { error: `n8n respondeu ${r.status}`, resultado },
+        {
+          // O n8n devolve a mensagem do nó que quebrou; é ela que interessa
+          // na tela, não o status genérico.
+          error: `Falha no fluxo do n8n (HTTP ${r.status}): ${extrairMensagem(resultado) || 'sem detalhe'}`,
+          detalhe: resultado,
+        },
         { status: 502 }
       )
     }
 
-    return Response.json({ enviados: itens.length, semMensagens, resultado })
+    // O fluxo pode responder 200 e ainda assim ter falhado item a item.
+    const falhas =
+      resultado && typeof resultado === 'object' && 'falhas' in resultado
+        ? Number((resultado as { falhas: unknown }).falhas)
+        : 0
+
+    return Response.json({
+      enviados: itens.length,
+      semMensagens,
+      falhas: Number.isFinite(falhas) ? falhas : 0,
+      resultado,
+    })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro ao abrir ocorrências'
     return Response.json({ error: msg }, { status: 502 })
   }
+}
+
+// O corpo de erro do n8n varia conforme onde quebrou: às vezes `message`,
+// às vezes `error`, às vezes texto puro.
+function extrairMensagem(corpo: unknown): string {
+  if (typeof corpo === 'string') return corpo.slice(0, 400)
+  if (corpo && typeof corpo === 'object') {
+    const o = corpo as Record<string, unknown>
+    for (const chave of ['message', 'error', 'description', 'hint']) {
+      const v = o[chave]
+      if (typeof v === 'string' && v.trim()) return v.slice(0, 400)
+    }
+    return JSON.stringify(corpo).slice(0, 400)
+  }
+  return ''
 }

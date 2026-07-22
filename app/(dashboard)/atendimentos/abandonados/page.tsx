@@ -16,6 +16,7 @@ import {
   FilePlus2,
   UserRound,
   Bot,
+  AlertTriangle,
 } from 'lucide-react'
 import { AtendimentosTabs } from '@/components/atendimentos/AtendimentosTabs'
 import { ConversaAbandonadaModal } from '@/components/atendimentos/ConversaAbandonadaModal'
@@ -45,6 +46,14 @@ type Abandonado = {
 // Quem falou por último separa dois casos bem diferentes: se foi o cliente,
 // a IA deixou no vácuo; se foi a IA, o cliente é que não voltou.
 type UltimoFiltro = 'todos' | 'cliente' | 'nexus'
+
+// Aviso do disparo. `detalhe` guarda a resposta crua do n8n, exibida num
+// bloco expansível — é o que permite entender uma falha sem abrir o n8n.
+type Aviso = {
+  tipo: 'ok' | 'erro'
+  texto: string
+  detalhe: string | null
+}
 
 type Resposta = {
   abandonados: Abandonado[]
@@ -132,7 +141,7 @@ export default function AbandonadosPage() {
   const [page, setPage] = useState(1)
   const [selecao, setSelecao] = useState<Set<string>>(new Set())
   const [abrindo, setAbrindo] = useState(false)
-  const [resultado, setResultado] = useState<string | null>(null)
+  const [resultado, setResultado] = useState<Aviso | null>(null)
 
   // Aplica o preset inicial (Hoje) no primeiro render.
   useEffect(() => {
@@ -307,10 +316,18 @@ export default function AbandonadosPage() {
           })),
         }),
       })
-      const json = await r.json().catch(() => ({}))
+      const json = await r.json().catch(() => null)
 
       if (!r.ok) {
-        setResultado(json?.error ?? 'Falha ao abrir ocorrências')
+        // Mostra o erro do fluxo, não uma mensagem genérica — sem isso o
+        // operador não tem como saber se pode tentar de novo.
+        setResultado({
+          tipo: 'erro',
+          texto:
+            json?.error ??
+            `A requisição falhou (HTTP ${r.status}). Verifique as execuções do fluxo no n8n.`,
+          detalhe: json?.detalhe ? JSON.stringify(json.detalhe, null, 2) : null,
+        })
         return
       }
 
@@ -333,20 +350,30 @@ export default function AbandonadosPage() {
       })
       setSelecao(new Set())
 
-      setResultado(
-        `${json.enviados} ocorrência(s) aberta(s)${
-          typeof criados === 'number' ? ` · ${criados} atendimento(s) criado(s)` : ''
-        }. Conferindo com o servidor…`
-      )
+      const falhas = Number(json?.falhas ?? 0)
+      setResultado({
+        tipo: falhas > 0 ? 'erro' : 'ok',
+        texto:
+          `${json.enviados} ocorrência(s) enviada(s)` +
+          (typeof criados === 'number' ? ` · ${criados} criada(s)` : '') +
+          (falhas > 0 ? ` · ${falhas} falharam no fluxo` : '') +
+          '. Conferindo com o servidor…',
+        detalhe: falhas > 0 ? JSON.stringify(json?.resultado, null, 2) : null,
+      })
 
       // O n8n processa o lote em alguns segundos; só depois disso o refetch
       // reflete a realidade. Antes disso ele traria os itens de volta.
       window.setTimeout(() => {
         carregar(true)
-        setResultado(null)
+        // Erro fica na tela até o operador trocar de período.
+        if (falhas === 0) setResultado(null)
       }, 8000)
-    } catch {
-      setResultado('Falha ao abrir ocorrências')
+    } catch (e) {
+      setResultado({
+        tipo: 'erro',
+        texto: `Falha ao abrir ocorrências: ${e instanceof Error ? e.message : 'erro desconhecido'}`,
+        detalhe: null,
+      })
     } finally {
       setAbrindo(false)
     }
@@ -399,7 +426,44 @@ export default function AbandonadosPage() {
       </div>
 
       {resultado && (
-        <div className="glass p-4 mb-4 text-sm text-orange-300">{resultado}</div>
+        <div
+          className={`glass p-4 mb-4 border ${
+            resultado.tipo === 'erro'
+              ? 'border-red-500/40 bg-red-500/[0.06]'
+              : 'border-glass-border'
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            {resultado.tipo === 'erro' && (
+              <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
+            )}
+            <p
+              className={`text-sm flex-1 ${
+                resultado.tipo === 'erro' ? 'text-red-300' : 'text-orange-300'
+              }`}
+            >
+              {resultado.texto}
+            </p>
+            <button
+              type="button"
+              onClick={() => setResultado(null)}
+              className="text-muted hover:text-primary text-xs cursor-pointer shrink-0"
+              aria-label="Fechar aviso"
+            >
+              ✕
+            </button>
+          </div>
+          {resultado.detalhe && (
+            <details className="mt-2">
+              <summary className="text-xs text-muted cursor-pointer hover:text-secondary">
+                Ver resposta do n8n
+              </summary>
+              <pre className="mt-2 text-[11px] text-secondary bg-base/60 border border-glass-border rounded-xl p-3 overflow-x-auto max-h-48 whitespace-pre-wrap">
+                {resultado.detalhe}
+              </pre>
+            </details>
+          )}
+        </div>
       )}
 
       {/* Stats do período. Os dois últimos quebram os abandonados por quem

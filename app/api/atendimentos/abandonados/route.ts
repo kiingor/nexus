@@ -95,30 +95,64 @@ export async function GET(request: NextRequest) {
     // `.limit()` maior NÃO vence — sem paginar, períodos longos trariam só
     // parte dos atendimentos e tudo mais pareceria abandonado.
     const supabase = createServerClient()
-    const atendimentos: Array<{ criado_em: string; phone: string | null; cnpj: string | null }> = []
+    type AtendimentoRef = {
+      id: number
+      criado_em: string
+      data_hora_chegada: string | null
+      phone: string | null
+      cnpj: string | null
+    }
+    // Por id: as duas varreduras abaixo se sobrepõem para os atendimentos
+    // registrados no mesmo dia da conversa.
+    const porId = new Map<number, AtendimentoRef>()
     const PAGINA = 1000
     const MAX_ATENDIMENTOS = 100_000
 
-    for (let offset = 0; offset < MAX_ATENDIMENTOS; offset += PAGINA) {
-      const { data, error } = await supabase
-        .from('atendimentos')
-        .select('phone, cnpj, criado_em')
-        .gte('criado_em', new Date(fromMs - FOLGA_MS).toISOString())
-        .lte('criado_em', new Date(toMs + FOLGA_MS).toISOString())
-        .order('criado_em', { ascending: true })
-        .range(offset, offset + PAGINA - 1)
+    const janelaIni = new Date(fromMs - FOLGA_MS).toISOString()
+    const janelaFim = new Date(toMs + FOLGA_MS).toISOString()
 
-      if (error) return Response.json({ error: error.message }, { status: 500 })
+    async function buscarAtendimentos(
+      coluna: 'criado_em' | 'data_hora_chegada'
+    ): Promise<string | null> {
+      for (let offset = 0; offset < MAX_ATENDIMENTOS; offset += PAGINA) {
+        const { data, error } = await supabase
+          .from('atendimentos')
+          .select('id, phone, cnpj, criado_em, data_hora_chegada')
+          .gte(coluna, janelaIni)
+          .lte(coluna, janelaFim)
+          .order(coluna, { ascending: true })
+          .range(offset, offset + PAGINA - 1)
 
-      const lote = data ?? []
-      atendimentos.push(...lote)
-      if (lote.length < PAGINA) break
+        if (error) return error.message
+
+        const lote = (data ?? []) as AtendimentoRef[]
+        for (const a of lote) porId.set(a.id, a)
+        if (lote.length < PAGINA) break
+      }
+      return null
+    }
+
+    // Duas varreduras: por data de criação e por data de chegada.
+    //
+    // A segunda é o que faz uma ocorrência aberta HOJE para uma conversa de
+    // ONTEM tirar a conversa da lista: o `criado_em` dela cai fora da janela
+    // de ontem, mas a `data_hora_chegada` (início da conversa) cai dentro.
+    for (const coluna of ['criado_em', 'data_hora_chegada'] as const) {
+      const erro = await buscarAtendimentos(coluna)
+      if (erro) return Response.json({ error: erro }, { status: 500 })
     }
 
     const porTelefone = new Map<string, number[]>()
     const porCnpj = new Map<string, number[]>()
-    for (const a of atendimentos) {
-      const criado = Date.parse(a.criado_em)
+    for (const a of porId.values()) {
+      // A chegada representa quando o atendimento aconteceu; o `criado_em`,
+      // quando foi registrado. Para casar com a conversa vale a chegada.
+      const chegada = a.data_hora_chegada
+        ? Date.parse(a.data_hora_chegada)
+        : NaN
+      const criado = Number.isFinite(chegada)
+        ? chegada
+        : Date.parse(a.criado_em)
       if (!Number.isFinite(criado)) continue
 
       const t = tail8(a.phone)
@@ -171,7 +205,7 @@ export async function GET(request: NextRequest) {
       stats: {
         conversas: porCliente.size,
         parados: parados.length,
-        atendimentos: atendimentos.length,
+        atendimentos: porId.size,
         abandonados: abandonados.length,
       },
       periodo: { from, to },

@@ -33,6 +33,16 @@ function formatDataHora(iso: string): string {
   return partes.replace('T', ' ')
 }
 
+// Versão com fuso explícito, para gravar em coluna `timestamptz`.
+//
+// O formato acima é para a Agenda, mas mandá-lo ao Postgres grava errado:
+// sem offset ele assume UTC e a hora fica 3h atrasada. Aqui o ISO original
+// da mensagem já carrega o fuso, então é só repassar.
+function toIso(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString()
+}
+
 /**
  * POST /api/atendimentos/abandonados/ocorrencia
  *
@@ -123,8 +133,12 @@ export async function POST(request: NextRequest) {
       itens.push({
         cliente_id: sel.cliente_id,
         transcricao_completa: transcricao,
+        // Formato da Agenda (hora de Brasília, sem fuso).
         DataHoraChegada: formatDataHora(chegada),
         DataHoraSaida: formatDataHora(ultima),
+        // Mesmos instantes em ISO, para as colunas timestamptz do Supabase.
+        chegada_iso: toIso(chegada),
+        saida_iso: toIso(ultima),
         PDV: cli?.PDV ?? '',
         cnpj: cli?.CNPJ ?? '',
         SolicitadoPor: cli?.nome ?? '',

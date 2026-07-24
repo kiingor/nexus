@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { classifyMotivo, MOTIVO_CATEGORIES } from '@/lib/atendimentos'
-import { TIPO_ATENDIMENTO_LABELS } from '@/lib/tipos-atendimento'
+import { TIPO_ATENDIMENTO_LABELS, motivoCanonico } from '@/lib/tipos-atendimento'
 import type { AtendimentoRecord } from '@/lib/types'
 
 // Endpoint do Dashboard de Monitoramento de Atendimentos.
@@ -202,10 +202,13 @@ export async function GET(request: NextRequest) {
     string,
     { motivo: string; total: number; resolvidos: number; parcialmente: number; transferidos: number }
   >()
-  // Inicializa só os buckets regex pra ordenação estável; os buckets
-  // de tipo_atendimento são criados sob demanda quando aparecem.
+  // Inicializa os buckets já canonicalizados pra ordenação estável; os
+  // buckets de tipo_atendimento são criados sob demanda quando aparecem.
   for (const cat of MOTIVO_CATEGORIES) {
-    motivoStats.set(cat, { motivo: cat, total: 0, resolvidos: 0, parcialmente: 0, transferidos: 0 })
+    const canon = motivoCanonico(cat)
+    if (!motivoStats.has(canon)) {
+      motivoStats.set(canon, { motivo: canon, total: 0, resolvidos: 0, parcialmente: 0, transferidos: 0 })
+    }
   }
 
   function getMotivoLabel(r: RowSubset): string {
@@ -214,12 +217,15 @@ export async function GET(request: NextRequest) {
     if (tipo && TIPO_ATENDIMENTO_LABELS[tipo]) {
       return TIPO_ATENDIMENTO_LABELS[tipo]
     }
-    // 2. Fallback: regex em problema_relatado + transcricao
-    return classifyMotivo({
-      problema_relatado: r.problema_relatado,
-      transcricao: r.transcricao,
-      problema_extraido: r.problema_extraido as RowSubset['problema_extraido'],
-    })
+    // 2. Fallback: regex em problema_relatado + transcricao.
+    //    Canonicaliza pra não duplicar buckets que o n8n nomeia diferente.
+    return motivoCanonico(
+      classifyMotivo({
+        problema_relatado: r.problema_relatado,
+        transcricao: r.transcricao,
+        problema_extraido: r.problema_extraido as RowSubset['problema_extraido'],
+      })
+    )
   }
 
   for (const r of rows) {

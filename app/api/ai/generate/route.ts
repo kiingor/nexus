@@ -1,5 +1,10 @@
 import { NextRequest } from 'next/server'
-import { getOpenAIClient } from '@/lib/openai'
+import {
+  getIaRouterClient,
+  getOpenAIClient,
+  hasIaRouter,
+  IAROUTER_MODEL,
+} from '@/lib/openai'
 
 const INSTRUCTION_SYSTEM_PROMPT = `Você é um assistente especializado em estruturar bases de conhecimento para agentes de IA.
 O usuário vai descrever um processo em linguagem natural.
@@ -60,10 +65,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const openai = getOpenAIClient()
+    // Prefere o gateway iarouter (quando configurado) — a conta OpenAI
+    // direta pode estar sem chave válida.
+    const usarGateway = hasIaRouter()
+    const openai = usarGateway ? getIaRouterClient() : getOpenAIClient()
+    const model = usarGateway ? IAROUTER_MODEL : 'gpt-4.1-mini'
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4.1-mini',
+      model,
       temperature: 0.3,
       max_tokens: 2048,
       messages: [
@@ -77,7 +86,9 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'Sem resposta da IA' }, { status: 500 })
     }
 
-    const parsed = JSON.parse(text)
+    // O gateway às vezes embrulha o JSON em cercas de código.
+    const limpo = text.replace(/```json/gi, '').replace(/```/g, '').trim()
+    const parsed = JSON.parse(limpo)
 
     return Response.json({
       title: parsed.title,

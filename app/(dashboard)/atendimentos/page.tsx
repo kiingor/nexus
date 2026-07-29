@@ -22,7 +22,7 @@ import {
   FileDown,
 } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
-import { atendimentosToMarkdown } from '@/lib/export-markdown'
+import { atendimentosToMarkdown, type AtendimentoExport } from '@/lib/export-markdown'
 
 const PAGE_SIZE = 30
 
@@ -603,13 +603,78 @@ export default function AtendimentosPage() {
     URL.revokeObjectURL(url)
   }, [])
 
-  // Exporta os selecionados (da página atual). Usa os registros já em memória.
-  const exportarSelecionados = useCallback(() => {
+  // Conversa REAL de um chat, vinda do banco de mensagens (uma linha por
+  // mensagem, sem agrupar consecutivas). Null pra ligação ou quando não há
+  // mensagens — aí o markdown usa a transcrição gravada como fallback.
+  const conversaReal = useCallback(async (a: AtendimentoRecord): Promise<string | null> => {
+    if (a.tipo_contato !== 'chat') return null
+    try {
+      const r = await fetch(`/api/atendimentos/${a.id}/mensagens`)
+      const j = await r.json()
+      const msgs: Array<{
+        remetente: string
+        conteudo: string | null
+        enviado_em: string | null
+        url_imagem: string | null
+        media_type: string | null
+      }> = j?.mensagens ?? []
+      if (!msgs.length) return null
+      return msgs
+        .map((m) => {
+          const quem = m.remetente === 'cliente-nexus' ? 'Cliente' : 'Nexus'
+          const hora = m.enviado_em
+            ? new Date(m.enviado_em).toLocaleTimeString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : ''
+          let texto = m.conteudo ?? ''
+          if (m.url_imagem) {
+            const anexo = `[${m.media_type || 'anexo'}] ${m.url_imagem}`
+            texto = texto ? `${texto} ${anexo}` : anexo
+          }
+          return `${quem}${hora ? ` [${hora}]` : ''}: ${texto}`
+        })
+        .join('\n')
+    } catch {
+      return null
+    }
+  }, [])
+
+  // Anexa a conversa real a cada registro (chats), em lotes pra não abrir
+  // dezenas de requests de uma vez.
+  const enriquecerComConversa = useCallback(
+    async (regs: AtendimentoRecord[]): Promise<AtendimentoExport[]> => {
+      const out: AtendimentoExport[] = regs.map((r) => ({ ...r }))
+      const LOTE = 6
+      for (let i = 0; i < out.length; i += LOTE) {
+        const fatia = out.slice(i, i + LOTE)
+        await Promise.all(
+          fatia.map(async (r, j) => {
+            const conv = await conversaReal(r)
+            if (conv) out[i + j].conversa = conv
+          })
+        )
+      }
+      return out
+    },
+    [conversaReal]
+  )
+
+  // Exporta os selecionados (da página atual), com a conversa real.
+  const exportarSelecionados = useCallback(async () => {
     const escolhidos = registrosVisiveis.filter((r) => selectedIds.has(r.id))
     if (escolhidos.length === 0) return
-    const md = atendimentosToMarkdown(escolhidos, `${escolhidos.length} atendimento(s) selecionado(s)`)
-    baixarMd(md, `atendimentos_selecionados_${new Date().toISOString().slice(0, 10)}.md`)
-  }, [registrosVisiveis, selectedIds, baixarMd])
+    setExportando(true)
+    try {
+      const enriquecidos = await enriquecerComConversa(escolhidos)
+      const md = atendimentosToMarkdown(enriquecidos, `${escolhidos.length} atendimento(s) selecionado(s)`)
+      baixarMd(md, `atendimentos_selecionados_${new Date().toISOString().slice(0, 10)}.md`)
+    } finally {
+      setExportando(false)
+    }
+  }, [registrosVisiveis, selectedIds, enriquecerComConversa, baixarMd])
 
   // Exporta TODOS do filtro atual — pagina o endpoint até o fim.
   const exportarTodos = useCallback(async () => {
@@ -631,12 +696,13 @@ export default function AtendimentosPage() {
         if (pagina > 1000) break // trava de segurança
       }
       if (todos.length === 0) return
-      const md = atendimentosToMarkdown(todos, `Todos do filtro — ${todos.length} atendimento(s)`)
+      const enriquecidos = await enriquecerComConversa(todos)
+      const md = atendimentosToMarkdown(enriquecidos, `Todos do filtro — ${todos.length} atendimento(s)`)
       baixarMd(md, `atendimentos_todos_${new Date().toISOString().slice(0, 10)}.md`)
     } finally {
       setExportando(false)
     }
-  }, [buildQueryParams, baixarMd])
+  }, [buildQueryParams, enriquecerComConversa, baixarMd])
 
   // Filtragem (server-side) já trouxe a página certa. `hasRecords` reflete
   // o que o servidor mandou; `noUnidosOnPage` cobre o caso em que o filtro

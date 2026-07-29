@@ -35,9 +35,14 @@ function linha(label: string, valor: unknown): string | null {
   return `- **${label}:** ${valor}`
 }
 
+// Registro + a conversa real já montada (do banco de mensagens). Quando
+// `conversa` está presente, é ela que vai no bloco — não a `transcricao`
+// gravada pelo n8n, que agrupa mensagens consecutivas e pode divergir.
+export type AtendimentoExport = AtendimentoRecord & { conversa?: string | null }
+
 // Um atendimento como bloco Markdown. Inclui os campos principais, o
-// problema/solução e a transcrição da conversa.
-export function atendimentoToMarkdown(a: AtendimentoRecord): string {
+// problema/solução e a conversa (real, se fornecida; senão a transcrição).
+export function atendimentoToMarkdown(a: AtendimentoExport): string {
   const titulo = a.nome_empresa || a.cliente_nome || `Atendimento #${a.id}`
   const campos = [
     linha('ID', a.id),
@@ -62,15 +67,17 @@ export function atendimentoToMarkdown(a: AtendimentoRecord): string {
   if (a.solucao_aplicada) {
     partes.push('', `**Solução aplicada:**`, '', a.solucao_aplicada)
   }
-  if (a.transcricao && a.transcricao.trim()) {
-    partes.push('', `**Conversa:**`, '', '```', a.transcricao.trim(), '```')
+  // Conversa real (banco de mensagens) tem prioridade sobre a transcrição.
+  const conversa = a.conversa?.trim() || a.transcricao?.trim()
+  if (conversa) {
+    partes.push('', `**Conversa:**`, '', '```', conversa, '```')
   }
   return partes.join('\n')
 }
 
 // Vários atendimentos num único documento, com um cabeçalho de contexto.
 export function atendimentosToMarkdown(
-  registros: AtendimentoRecord[],
+  registros: AtendimentoExport[],
   contexto?: string
 ): string {
   const cab = [

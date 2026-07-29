@@ -90,6 +90,18 @@ export function motivoCanonico(label: string): string {
   return SINONIMOS_MOTIVO[n] ?? CANON_BY_NORM[n] ?? label
 }
 
+// Label (normalizado) → código do tipo_atendimento. Serve pra transformar
+// um motivo clicado no Dashboard no filtro `tipo_atendimento` da Lista.
+const CODE_BY_NORM: Record<string, string> = Object.fromEntries(
+  Object.entries(TIPO_ATENDIMENTO_LABELS).map(([code, label]) => [normMotivo(label), code])
+)
+
+// Código do tipo_atendimento correspondente a um rótulo de motivo, ou null
+// se o motivo é uma categoria só do regex (sem coluna filtrável na Lista).
+export function motivoParaCodigo(label: string): string | null {
+  return CODE_BY_NORM[normMotivo(motivoCanonico(label))] ?? null
+}
+
 // Converte código → label amigável. Se for desconhecido, "humaniza"
 // o próprio código (snake_case → Title Case) pra não ficar feio.
 export function formatTipoAtendimento(codigo: string | null | undefined): string {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 type Item = { motivo: string; count: number }
@@ -30,12 +31,16 @@ export function MotivosBarList({
   accent = 'orange',
   emptyMessage = 'Sem dados no período.',
   collapsedCount = 10,
+  hrefFor,
 }: {
   items: Item[]
   title?: string
   accent?: Accent
   emptyMessage?: string
   collapsedCount?: number
+  // Quando fornecido e retorna uma URL, o motivo vira link pra Lista
+  // filtrada. Retornar null deixa o item não-clicável (motivo sem tipo).
+  hrefFor?: (motivo: string) => string | null
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -64,9 +69,13 @@ export function MotivosBarList({
       <div className="space-y-2 flex-1">
         {visibleItems.map((it) => {
           const pct = Math.round((it.count / max) * 100)
-          return (
-            <div key={it.motivo} className="flex items-center gap-3">
-              <span className="text-sm text-primary flex-1 truncate" title={it.motivo}>
+          const href = hrefFor?.(it.motivo) ?? null
+          const inner = (
+            <>
+              <span
+                className={`text-sm flex-1 truncate ${href ? 'text-primary group-hover:text-orange-400 transition-colors' : 'text-primary'}`}
+                title={href ? `Ver atendimentos: ${it.motivo}` : it.motivo}
+              >
                 {it.motivo}
               </span>
               <div className="w-20 h-2 rounded-full bg-white/5 overflow-hidden shrink-0">
@@ -78,6 +87,19 @@ export function MotivosBarList({
               <span className={`text-sm font-mono w-10 text-right shrink-0 ${numCls}`}>
                 {it.count.toLocaleString('pt-BR')}
               </span>
+            </>
+          )
+          return href ? (
+            <Link
+              key={it.motivo}
+              href={href}
+              className="flex items-center gap-3 group -mx-1.5 px-1.5 py-0.5 rounded-lg hover:bg-white/5 transition-colors"
+            >
+              {inner}
+            </Link>
+          ) : (
+            <div key={it.motivo} className="flex items-center gap-3">
+              {inner}
             </div>
           )
         })}

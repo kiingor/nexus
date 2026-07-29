@@ -13,6 +13,12 @@ export type AtendimentoListRecord = AtendimentoRecord & {
 interface Props {
   records: AtendimentoListRecord[]
   onSelect: (record: AtendimentoListRecord) => void
+  // Seleção pra export. Quando `selectedIds` é fornecido, aparece a coluna
+  // de checkbox. Um atendimento "unido" seleciona todos os seus mergedIds.
+  selectedIds?: Set<number>
+  onToggle?: (record: AtendimentoListRecord) => void
+  onToggleAll?: (marcar: boolean) => void
+  allSelected?: boolean
 }
 
 // Janela em milissegundos para considerar um atendimento "novo" — usada
@@ -126,13 +132,32 @@ function NotaCell({ nota }: { nota: number | null | undefined }) {
   )
 }
 
-export function AtendimentosList({ records, onSelect }: Props) {
+export function AtendimentosList({
+  records,
+  onSelect,
+  selectedIds,
+  onToggle,
+  onToggleAll,
+  allSelected,
+}: Props) {
+  const selectable = !!selectedIds && !!onToggle
   return (
     <div className="glass overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="border-b border-glass-border text-left text-xs uppercase tracking-wider text-muted">
+              {selectable && (
+                <th className="px-4 py-3 font-medium w-10">
+                  <input
+                    type="checkbox"
+                    checked={!!allSelected}
+                    onChange={(e) => onToggleAll?.(e.target.checked)}
+                    title="Selecionar todos desta página"
+                    className="accent-orange-500 cursor-pointer"
+                  />
+                </th>
+              )}
               <th className="px-4 py-3 font-medium">Data</th>
               <th className="px-4 py-3 font-medium">Tipo</th>
               <th className="px-4 py-3 font-medium">Status</th>
@@ -149,12 +174,32 @@ export function AtendimentosList({ records, onSelect }: Props) {
               const tipo = tipoContatoBadge(r.tipo_contato ?? null)
               const novo = isNovo(r.data_hora_chegada || r.criado_em)
 
+              const marcado = selectable && !!selectedIds?.has(r.id)
               return (
                 <tr
                   key={r.id}
                   onClick={() => onSelect(r)}
-                  className="border-b border-glass-border/50 hover:bg-white/[0.02] cursor-pointer transition-colors"
+                  className={`border-b border-glass-border/50 hover:bg-white/[0.02] cursor-pointer transition-colors ${
+                    marcado ? 'bg-orange-500/[0.06]' : ''
+                  }`}
                 >
+                  {selectable && (
+                    <td
+                      className="px-4 py-3"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onToggle?.(r)
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={marcado}
+                        onChange={() => onToggle?.(r)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="accent-orange-500 cursor-pointer"
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-sm text-secondary">
                     <div className="flex items-center gap-1.5">
                       <Calendar size={12} className="text-muted" />

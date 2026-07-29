@@ -11,6 +11,7 @@ import { StatusDonut } from '@/components/atendimentos/dashboard/StatusDonut'
 import { DailyVolumeChart } from '@/components/atendimentos/dashboard/DailyVolumeChart'
 import { MotivosBarList } from '@/components/atendimentos/dashboard/MotivosBarList'
 import { WorstMotivosTable } from '@/components/atendimentos/dashboard/WorstMotivosTable'
+import { motivoParaCodigo } from '@/lib/tipos-atendimento'
 
 // Mesmos presets da Lista, com adições do critério da nova tela:
 // "Hoje, 3 dias, 7 dias, último mês, intervalo personalizado".
@@ -221,6 +222,30 @@ export default function AtendimentosDashboardPage() {
   const captureRef = useRef<HTMLDivElement>(null)
   const exportHeaderRef = useRef<HTMLDivElement>(null)
   const [exportando, setExportando] = useState(false)
+
+  // Monta a URL da Lista pra um motivo clicado: leva o tipo_atendimento
+  // correspondente + os mesmos filtros aplicados aqui no Dashboard. Motivos
+  // sem código de tipo (categorias só do regex) retornam null — não clicáveis.
+  const hrefParaMotivo = useCallback(
+    (motivo: string, statusOverride?: StatusFilter): string | null => {
+      const codigo = motivoParaCodigo(motivo)
+      if (!codigo) return null
+      const p = new URLSearchParams()
+      p.set('tipo_atendimento', codigo)
+      const status = statusOverride ?? statusFilter
+      if (status !== 'all') p.set('status', status)
+      if (destinoFilter !== 'all') p.set('destino', destinoFilter)
+      if (tipoContatoFilter !== 'all') p.set('tipo_contato', tipoContatoFilter)
+      if (sentimentoFilter !== 'all') p.set('sentimento', sentimentoFilter)
+      if (comProblema) p.set('com_problema', 'true')
+      if (fromDate) {
+        p.set('from', fromDate)
+        p.set('to', toDate || fromDate)
+      }
+      return `/atendimentos?${p.toString()}`
+    },
+    [statusFilter, destinoFilter, tipoContatoFilter, sentimentoFilter, comProblema, fromDate, toDate]
+  )
 
   const baixar = useCallback((href: string, nome: string) => {
     const a = document.createElement('a')
@@ -513,18 +538,22 @@ ${
               items={data.topMotivos}
               title="Mais entraram em contato"
               accent="orange"
+              hrefFor={hrefParaMotivo}
             />
             <MotivosBarList
               items={data.mostResolvidos}
               title="Mais resolvidos pela IA"
               accent="green"
               emptyMessage="Nenhum atendimento resolvido no período."
+              // Neste corte, força o status resolvido.
+              hrefFor={(m) => hrefParaMotivo(m, 'resolvida_ia')}
             />
             <MotivosBarList
               items={data.mostTransferidos}
               title="Mais transferidos"
               accent="yellow"
               emptyMessage="Nenhuma transferência no período."
+              hrefFor={(m) => hrefParaMotivo(m, 'transferida')}
             />
           </div>
 

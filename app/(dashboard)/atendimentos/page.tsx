@@ -19,8 +19,10 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
+  FileDown,
 } from 'lucide-react'
 import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
+import { atendimentosToMarkdown } from '@/lib/export-markdown'
 
 const PAGE_SIZE = 30
 
@@ -321,11 +323,42 @@ export default function AtendimentosPage() {
   // o spinner global (load silencioso evita "flash" da tabela).
   const [refreshing, setRefreshing] = useState(false)
 
+  // Seleção pra export Markdown.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [exportando, setExportando] = useState(false)
+
   useEffect(() => {
     fetch('/api/atendimentos/pdvs')
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d?.pdvs)) setPdvOptions(d.pdvs) })
       .catch(() => {})
+  }, [])
+
+  // Pré-aplica filtros vindos da URL (ex.: clique num motivo do Dashboard).
+  // Lido do window no client pra não forçar Suspense/dynamic no prerender.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    const status = sp.get('status')
+    const destino = sp.get('destino')
+    const tipoContato = sp.get('tipo_contato')
+    const sentimento = sp.get('sentimento')
+    const tipoAtend = sp.get('tipo_atendimento')
+    const comProb = sp.get('com_problema')
+    const from = sp.get('from')
+    const to = sp.get('to')
+
+    if (status) setStatusFilter(status as StatusFilter)
+    if (destino) setDestinoFilter(destino as DestinoFilter)
+    if (tipoContato) setTipoContatoFilter(tipoContato as TipoContatoFilter)
+    if (sentimento) setSentimentoFilter(sentimento as SentimentoFilter)
+    if (tipoAtend) setTipoAtendimentoFilter(tipoAtend)
+    if (comProb === 'true') setComProblema(true)
+    if (from) {
+      setPeriodPreset('custom')
+      setFromDate(from)
+      setToDate(to || from)
+    }
+    // Só na montagem — lê a URL uma vez.
   }, [])
 
   // Debounce da busca (evita request a cada tecla)
@@ -508,6 +541,103 @@ export default function AtendimentosPage() {
     [mergedRecords, soUnidos]
   )
 
+  // Todos os atendimentos individuais visíveis (expandindo os unidos).
+  const registrosVisiveis = useMemo(
+    () => visibleRecords.flatMap((r) => r.mergedRecords ?? [r]),
+    [visibleRecords]
+  )
+
+  // Alterna a seleção de uma linha — expande os unidos, então marcar um
+  // grupo marca todos os atendimentos dele.
+  const toggleSelecao = useCallback((record: MergedAtendimento | AtendimentoRecord) => {
+    const ids =
+      'mergedRecords' in record && record.mergedRecords
+        ? record.mergedRecords.map((x) => x.id)
+        : [record.id]
+    setSelectedIds((atual) => {
+      const proximo = new Set(atual)
+      const todosMarcados = ids.every((id) => proximo.has(id))
+      ids.forEach((id) => (todosMarcados ? proximo.delete(id) : proximo.add(id)))
+      return proximo
+    })
+  }, [])
+
+  // Marca/desmarca todos os visíveis da página.
+  const toggleSelecaoPagina = useCallback(
+    (marcar: boolean) => {
+      setSelectedIds((atual) => {
+        const proximo = new Set(atual)
+        for (const r of registrosVisiveis) {
+          if (marcar) proximo.add(r.id)
+          else proximo.delete(r.id)
+        }
+        return proximo
+      })
+    },
+    [registrosVisiveis]
+  )
+
+  const todosPaginaMarcados =
+    registrosVisiveis.length > 0 && registrosVisiveis.every((r) => selectedIds.has(r.id))
+
+  // IDs do checkbox por LINHA (base do grupo) — a lista marca a linha se o
+  // registro base está selecionado.
+  const linhasSelecionadas = useMemo(() => {
+    const s = new Set<number>()
+    for (const r of visibleRecords) {
+      const ids = r.mergedRecords?.map((x) => x.id) ?? [r.id]
+      if (ids.every((id) => selectedIds.has(id))) s.add(r.id)
+    }
+    return s
+  }, [visibleRecords, selectedIds])
+
+  const baixarMd = useCallback((texto: string, nome: string) => {
+    const blob = new Blob([texto], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = nome
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }, [])
+
+  // Exporta os selecionados (da página atual). Usa os registros já em memória.
+  const exportarSelecionados = useCallback(() => {
+    const escolhidos = registrosVisiveis.filter((r) => selectedIds.has(r.id))
+    if (escolhidos.length === 0) return
+    const md = atendimentosToMarkdown(escolhidos, `${escolhidos.length} atendimento(s) selecionado(s)`)
+    baixarMd(md, `atendimentos_selecionados_${new Date().toISOString().slice(0, 10)}.md`)
+  }, [registrosVisiveis, selectedIds, baixarMd])
+
+  // Exporta TODOS do filtro atual — pagina o endpoint até o fim.
+  const exportarTodos = useCallback(async () => {
+    setExportando(true)
+    try {
+      const todos: AtendimentoRecord[] = []
+      let pagina = 1
+      for (;;) {
+        const params = buildQueryParams(false)
+        params.set('page', String(pagina))
+        params.set('pageSize', '100')
+        const res = await fetch(`/api/atendimentos?${params.toString()}`)
+        const data = await res.json()
+        const lote: AtendimentoRecord[] = data?.data ?? []
+        todos.push(...lote)
+        const totalPag = data?.totalPages ?? 1
+        if (pagina >= totalPag || lote.length === 0) break
+        pagina++
+        if (pagina > 1000) break // trava de segurança
+      }
+      if (todos.length === 0) return
+      const md = atendimentosToMarkdown(todos, `Todos do filtro — ${todos.length} atendimento(s)`)
+      baixarMd(md, `atendimentos_todos_${new Date().toISOString().slice(0, 10)}.md`)
+    } finally {
+      setExportando(false)
+    }
+  }, [buildQueryParams, baixarMd])
+
   // Filtragem (server-side) já trouxe a página certa. `hasRecords` reflete
   // o que o servidor mandou; `noUnidosOnPage` cobre o caso em que o filtro
   // client-side de unidos zerou a página atual.
@@ -526,6 +656,27 @@ export default function AtendimentosPage() {
           <AtendimentosTabs />
         </div>
         <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <button
+              type="button"
+              onClick={exportarSelecionados}
+              title={`Exportar ${selectedIds.size} atendimento(s) selecionado(s) para Markdown`}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500/20 transition-colors text-sm font-medium cursor-pointer"
+            >
+              <FileDown size={14} />
+              Exportar selecionados ({selectedIds.size})
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={exportarTodos}
+            disabled={exportando || !hasRecords}
+            title="Exportar todos os atendimentos do filtro atual para Markdown"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-glass border border-glass-border text-secondary hover:text-primary hover:border-orange-500/40 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <FileDown size={14} />
+            {exportando ? 'Exportando…' : 'Exportar todos'}
+          </button>
           <button
             type="button"
             onClick={refresh}
@@ -828,7 +979,14 @@ export default function AtendimentosPage() {
         </div>
       ) : (
         <>
-          <AtendimentosList records={visibleRecords} onSelect={handleListSelect} />
+          <AtendimentosList
+            records={visibleRecords}
+            onSelect={handleListSelect}
+            selectedIds={linhasSelecionadas}
+            onToggle={toggleSelecao}
+            onToggleAll={toggleSelecaoPagina}
+            allSelected={todosPaginaMarcados}
+          />
           <Pagination
             page={page}
             totalPages={totalPages}

@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toPng } from 'html-to-image'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { Spinner } from '@/components/ui/Spinner'
-import { RefreshCw, Filter } from 'lucide-react'
+import { RefreshCw, Filter, ImageDown, FileDown } from 'lucide-react'
 import { AtendimentosTabs } from '@/components/atendimentos/AtendimentosTabs'
 import { KPICards } from '@/components/atendimentos/dashboard/KPICards'
 import { StatusDonut } from '@/components/atendimentos/dashboard/StatusDonut'
@@ -21,6 +22,21 @@ type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 
 type DestinoFilter = 'all' | 'servicedesk' | 'financeiro' | 'comercial' | 'ouvidoria'
 type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
 type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
+
+// Labels legíveis dos filtros, usados no cabeçalho dos exports.
+const STATUS_LABELS: Record<string, string> = {
+  em_atendimento: 'Em atendimento',
+  transferida: 'Transferida',
+  resolvida_ia: 'Resolvida IA',
+  resolvido_parcialmente: 'Resolvido Parcialmente',
+  interrompida: 'Interrompida',
+}
+const DESTINO_LABELS: Record<string, string> = {
+  servicedesk: 'ServiceDesk',
+  financeiro: 'Financeiro',
+  comercial: 'Comercial',
+  ouvidoria: 'Ouvidoria',
+}
 
 function toLocalDateStr(d: Date): string {
   const y = d.getFullYear()
@@ -179,6 +195,130 @@ export default function AtendimentosDashboardPage() {
     return `${formatBR(fromDate)} a ${formatBR(toDate)}`
   }, [fromDate, toDate])
 
+  // Resumo textual dos filtros ativos — vai no cabeçalho do export.
+  const filtrosLabel = useMemo(() => {
+    const partes: string[] = [`Período: ${periodLabel}`]
+    if (statusFilter !== 'all') partes.push(`Status: ${STATUS_LABELS[statusFilter]}`)
+    if (destinoFilter !== 'all') partes.push(`Destino: ${DESTINO_LABELS[destinoFilter]}`)
+    if (tipoContatoFilter !== 'all')
+      partes.push(`Tipo: ${tipoContatoFilter === 'ligacao' ? 'Ligação' : 'Chat'}`)
+    if (sentimentoFilter !== 'all') partes.push(`Sentimento: ${sentimentoFilter}`)
+    if (comProblema) partes.push('Só com problema extraído')
+    return partes.join(' · ')
+  }, [periodLabel, statusFilter, destinoFilter, tipoContatoFilter, sentimentoFilter, comProblema])
+
+  // Sufixo de arquivo com o período, pra distinguir exports.
+  const fileSuffix = useMemo(() => {
+    const hoje = new Date().toISOString().slice(0, 10)
+    const periodo = !fromDate
+      ? 'todos'
+      : !toDate || toDate === fromDate
+        ? fromDate
+        : `${fromDate}_${toDate}`
+    return `${periodo}_${hoje}`
+  }, [fromDate, toDate])
+
+  const captureRef = useRef<HTMLDivElement>(null)
+  const exportHeaderRef = useRef<HTMLDivElement>(null)
+  const [exportando, setExportando] = useState(false)
+
+  const baixar = useCallback((href: string, nome: string) => {
+    const a = document.createElement('a')
+    a.href = href
+    a.download = nome
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  }, [])
+
+  const exportarImagem = useCallback(async () => {
+    if (!captureRef.current) return
+    setExportando(true)
+    const header = exportHeaderRef.current
+    if (header) header.style.display = 'block'
+    try {
+      // pixelRatio 2 pra sair nítido; fundo sólido pra não ficar transparente.
+      // Duas passadas: a 1ª "aquece" o carregamento de fontes/estilos, que
+      // o html-to-image às vezes perde no primeiro render.
+      const opts = {
+        pixelRatio: 2,
+        backgroundColor: '#0f1720',
+        cacheBust: true,
+      }
+      await toPng(captureRef.current, opts)
+      const dataUrl = await toPng(captureRef.current, opts)
+      baixar(dataUrl, `dashboard-atendimentos_${fileSuffix}.png`)
+    } catch (e) {
+      console.error('Falha ao gerar imagem:', e)
+    } finally {
+      if (header) header.style.display = 'none'
+      setExportando(false)
+    }
+  }, [baixar, fileSuffix])
+
+  const exportarMarkdown = useCallback(() => {
+    const pct = (n: number, total: number) =>
+      total > 0 ? `${Math.round((n / total) * 100)}%` : '—'
+    const linhasMotivo = (arr: Array<{ motivo: string; count: number }>) =>
+      arr.length
+        ? arr.map((m) => `| ${m.motivo} | ${m.count} |`).join('\n')
+        : '| — | 0 |'
+
+    const md = `# Dashboard de Atendimentos
+
+**${filtrosLabel}**
+
+_Gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}_
+${data.truncated ? '\n> ⚠️ Volume alto: considerando os 500.000 atendimentos mais recentes do filtro.\n' : ''}
+## Indicadores
+
+| Indicador | Valor |
+|---|---|
+| Total no período | ${data.kpi.total} |
+| Resolvidos | ${data.kpi.resolvidos} (${pct(data.kpi.resolvidos, data.kpi.total)}) |
+| Resolvidos parcial. | ${data.kpi.parcialmente} (${pct(data.kpi.parcialmente, data.kpi.total)}) |
+| Transferidos | ${data.kpi.transferidos} (${pct(data.kpi.transferidos, data.kpi.total)}) |
+| % Resolução | ${data.kpi.percentualResolucao}% |
+
+## Mais entraram em contato
+
+| Motivo | Total |
+|---|---|
+${linhasMotivo(data.topMotivos)}
+
+## Mais resolvidos pela IA
+
+| Motivo | Resolvidos |
+|---|---|
+${linhasMotivo(data.mostResolvidos)}
+
+## Mais transferidos
+
+| Motivo | Transferidos |
+|---|---|
+${linhasMotivo(data.mostTransferidos)}
+
+## Motivos com pior taxa de resolução
+
+| Motivo | Total | Resolv. | Transf. | % Resol. |
+|---|---|---|---|---|
+${
+      data.worstMotivos.length
+        ? data.worstMotivos
+            .map(
+              (m) =>
+                `| ${m.motivo} | ${m.total} | ${m.resolvidos} | ${m.transferidos} | ${m.percentual ?? 0}% |`
+            )
+            .join('\n')
+        : '| — | 0 | 0 | 0 | — |'
+    }
+`
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    baixar(url, `dashboard-atendimentos_${fileSuffix}.md`)
+    URL.revokeObjectURL(url)
+  }, [data, filtrosLabel, fileSuffix, baixar])
+
   return (
     <div>
       <Breadcrumb items={[{ label: 'Dashboard', href: '/' }, { label: 'Atendimentos' }, { label: 'Dashboard' }]} />
@@ -188,16 +328,46 @@ export default function AtendimentosDashboardPage() {
           <h1 className="text-3xl font-display font-bold text-primary">Atendimentos</h1>
           <AtendimentosTabs />
         </div>
-        <button
-          type="button"
-          onClick={refresh}
-          disabled={refreshing}
-          title="Atualizar dashboard"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-glass border border-glass-border text-secondary hover:text-primary hover:border-orange-500/40 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-        >
-          <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={exportarImagem}
+            disabled={loading || exportando}
+            title="Salvar o dashboard como imagem PNG"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-glass border border-glass-border text-secondary hover:text-primary hover:border-orange-500/40 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <ImageDown size={14} />
+            {exportando ? 'Gerando…' : 'Salvar imagem'}
+          </button>
+          <button
+            type="button"
+            onClick={exportarMarkdown}
+            disabled={loading}
+            title="Salvar os dados do dashboard em Markdown"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-glass border border-glass-border text-secondary hover:text-primary hover:border-orange-500/40 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <FileDown size={14} />
+            Salvar Markdown
+          </button>
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={refreshing}
+            title="Atualizar dashboard"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-glass border border-glass-border text-secondary hover:text-primary hover:border-orange-500/40 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+            Atualizar
+          </button>
+        </div>
+      </div>
+
+      <div ref={captureRef} className="rounded-2xl">
+      {/* Título + filtros — oculto na tela, revelado só durante a captura
+          da imagem (via exportHeaderRef) pra dar contexto no PNG. */}
+      <div ref={exportHeaderRef} style={{ display: 'none' }} className="mb-4">
+        <h2 className="text-lg font-bold text-primary">Dashboard de Atendimentos</h2>
+        <p className="text-xs text-secondary mt-0.5">{filtrosLabel}</p>
       </div>
 
       {/* Filtros temporais + destino */}
@@ -361,6 +531,7 @@ export default function AtendimentosDashboardPage() {
           <WorstMotivosTable rows={data.worstMotivos} />
         </div>
       )}
+      </div>
     </div>
   )
 }

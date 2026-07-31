@@ -88,11 +88,12 @@ export default function MonitoriaPage() {
 
   useEffect(() => { load() }, [load])
 
-  const qualities = useMemo(() => Array.from(new Set(records.map(r => r.classificacao_qualidade).filter(Boolean) as string[])).sort(), [records])
-  const filtered = useMemo(() => records.filter(record => {
+  const recordsWithAttendant = useMemo(() => records.filter(record => Boolean(record.atendente?.trim())), [records])
+  const qualities = useMemo(() => Array.from(new Set(recordsWithAttendant.map(r => r.classificacao_qualidade).filter(Boolean) as string[])).sort(), [recordsWithAttendant])
+  const filtered = useMemo(() => recordsWithAttendant.filter(record => {
     const haystack = normalizar([record.atendente, record.nome_cliente, record.cnpj_cliente, record.produto_ou_assunto, record.motivo_do_contato].filter(Boolean).join(' '))
     return (!search || haystack.includes(normalizar(search))) && (!quality || record.classificacao_qualidade === quality)
-  }), [records, search, quality])
+  }), [recordsWithAttendant, search, quality])
 
   const groups = useMemo(() => {
     const map = new Map<string, MonitoramentoNexusRecord[]>()

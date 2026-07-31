@@ -39,6 +39,8 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from('monitoramento_nexus')
     .select('*')
+    .not('atendente', 'is', null)
+    .neq('atendente', '')
     .order('created_at', { ascending: false })
     .limit(limit)
 

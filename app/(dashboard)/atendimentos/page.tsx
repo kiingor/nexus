@@ -218,12 +218,19 @@ function resolvePreset(preset: PeriodPreset): { from: string; to: string } | nul
 function buildDateRange(
   fromDay: string,
   toDay: string,
+  useTime: boolean,
   fromTime: string,
   toTime: string
 ): { from?: string; to?: string } {
   if (!fromDay) return {}
   const endDay = toDay || fromDay
   const [start, end] = fromDay <= endDay ? [fromDay, endDay] : [endDay, fromDay]
+  if (!useTime) {
+    return {
+      from: `${start}T00:00:00-03:00`,
+      to: `${end}T23:59:59.999-03:00`,
+    }
+  }
   return {
     from: `${start}T${fromTime || '00:00'}:00-03:00`,
     // Sem hora final, inclui o dia inteiro. O backend considera o limite
@@ -263,6 +270,7 @@ export default function AtendimentosPage() {
   const [toDate, setToDate] = useState('')
   const [fromTime, setFromTime] = useState('')
   const [toTime, setToTime] = useState('')
+  const [timeFilterEnabled, setTimeFilterEnabled] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [sentimentoFilter, setSentimentoFilter] = useState<SentimentoFilter>('all')
   const [pdvFilter, setPdvFilter] = useState('')
@@ -282,6 +290,7 @@ export default function AtendimentosPage() {
       if (range.from && range.to && range.from !== range.to) {
         setFromTime('')
         setToTime('')
+        setTimeFilterEnabled(false)
       }
     }
   }, [])
@@ -354,6 +363,7 @@ export default function AtendimentosPage() {
     toDate,
     fromTime,
     toTime,
+    timeFilterEnabled,
     sentimentoFilter,
     searchDebounced,
     pdvFilter,
@@ -372,7 +382,13 @@ export default function AtendimentosPage() {
       if (tipoAtendimentoFilter) params.set('tipo_atendimento', tipoAtendimentoFilter)
       if (comProblema) params.set('com_problema', 'true')
       if (searchDebounced) params.set('search', searchDebounced)
-      const { from, to } = buildDateRange(fromDate, toDate, fromTime, toTime)
+      const { from, to } = buildDateRange(
+        fromDate,
+        toDate,
+        timeFilterEnabled,
+        fromTime,
+        toTime
+      )
       if (from) params.set('from', from)
       if (to) params.set('to', to)
       if (includePagination) {
@@ -394,6 +410,7 @@ export default function AtendimentosPage() {
       toDate,
       fromTime,
       toTime,
+      timeFilterEnabled,
       page,
     ]
   )
@@ -927,13 +944,22 @@ export default function AtendimentosPage() {
 
         {periodPreset !== 'todos' && (
           <div className="flex items-center gap-1.5">
+            <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={timeFilterEnabled}
+                onChange={(e) => setTimeFilterEnabled(e.target.checked)}
+                className="accent-orange-500"
+              />
+              Filtrar horário
+            </label>
             <span className="text-[10px] uppercase tracking-wider text-muted">Das</span>
             <input
               type="time"
               value={fromTime}
               onChange={(e) => setFromTime(e.target.value)}
-              disabled={!fromDate}
-              title="Hora inicial (vazio = 00:00)"
+              disabled={!fromDate || !timeFilterEnabled}
+              title={timeFilterEnabled ? 'Hora inicial (vazio = 00:00)' : 'Ative “Filtrar horário”'}
               className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-40 [color-scheme:dark]"
             />
             <span className="text-[10px] uppercase tracking-wider text-muted">Até</span>
@@ -941,8 +967,8 @@ export default function AtendimentosPage() {
               type="time"
               value={toTime}
               onChange={(e) => setToTime(e.target.value)}
-              disabled={!fromDate}
-              title="Hora final (vazio = 23:59)"
+              disabled={!fromDate || !timeFilterEnabled}
+              title={timeFilterEnabled ? 'Hora final (vazio = 23:59)' : 'Ative “Filtrar horário”'}
               className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-40 [color-scheme:dark]"
             />
           </div>
@@ -957,6 +983,7 @@ export default function AtendimentosPage() {
               setToDate('')
               setFromTime('')
               setToTime('')
+              setTimeFilterEnabled(false)
             }}
             className="text-xs text-muted hover:text-primary underline underline-offset-2"
           >

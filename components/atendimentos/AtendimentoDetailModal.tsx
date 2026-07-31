@@ -363,7 +363,11 @@ function ValidationSection({
   record: AtendimentoRecord
   onSaved?: (updated: AtendimentoRecord) => void
 }) {
-  const isValidated = !!record.validado
+  // Registros vindos do fluxo podem ter `validacao_transf` preenchida antes
+  // de o booleano `validado` ser marcado. Nesses casos, a validação já deve
+  // aparecer no estado concluído, sem abrir o formulário automaticamente.
+  const isValidated =
+    !!record.validado || !!record.validacao_transf?.trim()
   // Modo edição: liga quando ainda não validado, ou quando clica em "Editar"
   const [editing, setEditing] = useState(!isValidated)
   const [comentario, setComentario] = useState(
@@ -385,7 +389,7 @@ function ValidationSection({
   // Quando o record muda (troca de aba ou refresh), re-sincroniza estado.
   useEffect(() => {
     setComentario(record.validacao_transf ?? record.validacao_comentario ?? '')
-    setEditing(!record.validado)
+    setEditing(!(record.validado || record.validacao_transf?.trim()))
     setError(null)
   }, [record.id, record.validado, record.validacao_comentario, record.validacao_transf])
 
@@ -399,7 +403,7 @@ function ValidationSection({
         body: JSON.stringify({
           validado: novoValidado,
           validado_por: userEmail ?? undefined,
-          validacao_transf: comentario.trim() || null,
+          validacao_transf: novoValidado ? comentario.trim() || null : null,
         }),
       })
       const json = await res.json()

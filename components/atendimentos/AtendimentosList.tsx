@@ -266,11 +266,11 @@ export function AtendimentosList({
                           +{r.mergedCount - 1} unidos
                         </span>
                       )}
-                      {r.validado && (
+                      {(r.validado || !!r.validacao_transf?.trim()) && (
                         <span
                           title={
-                            r.validacao_comentario
-                              ? `Validado · ${r.validacao_comentario}`
+                            r.validacao_transf || r.validacao_comentario
+                              ? `Validado · ${r.validacao_transf || r.validacao_comentario}`
                               : 'Atendimento validado'
                           }
                           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border bg-green-500/10 border-green-500/30 text-green-400 shrink-0 whitespace-nowrap"

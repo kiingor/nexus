@@ -15,20 +15,26 @@ function normalize(body: MonitoriaInput) {
 }
 
 export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
   if (
     process.env.NODE_ENV === 'development' &&
     (!process.env.NEXT_PUBLIC_SUPABASE_URL ||
       !(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY))
   ) {
-    return Response.json(DEMO_MONITORAMENTO)
+    const from = searchParams.get('from')
+    const to = searchParams.get('to')
+    return Response.json(DEMO_MONITORAMENTO.filter(item =>
+      (!from || item.created_at >= from) && (!to || item.created_at <= to)
+    ))
   }
 
   const supabase = createServerClient()
-  const { searchParams } = new URL(request.url)
 
   const limit = Math.min(Number(searchParams.get('limit')) || 100, 500)
   const atendente = searchParams.get('atendente')
   const prioridade = searchParams.get('prioridade')
+  const from = searchParams.get('from')
+  const to = searchParams.get('to')
 
   let query = supabase
     .from('monitoramento_nexus')
@@ -38,6 +44,8 @@ export async function GET(request: NextRequest) {
 
   if (atendente) query = query.eq('atendente', atendente)
   if (prioridade) query = query.eq('prioridade', prioridade)
+  if (from) query = query.gte('created_at', from)
+  if (to) query = query.lte('created_at', to)
 
   const { data, error } = await query
 

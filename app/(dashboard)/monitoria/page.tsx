@@ -198,7 +198,7 @@ export default function MonitoriaPage() {
         : error ? <Empty icon={<AlertTriangle size={30} />} title="Não foi possível carregar o monitoramento" description={error} />
         : groups.length === 0 ? <Empty icon={<ClipboardCheck size={30} />} title="Nenhum atendimento encontrado" description="Os registros da tabela monitoramento_nexus aparecerão aqui." />
         : <div className="space-y-5">{groups.map(group => {
-          const expanded = open[group.name] ?? true
+          const expanded = open[group.name] ?? false
           const critical = group.items.filter(item => ['critical', 'warning'].includes(nivel(item))).length
           const totalPages = Math.max(1, Math.ceil(group.items.length / PAGE_SIZE))
           const page = Math.min(pages[group.name] || 1, totalPages)

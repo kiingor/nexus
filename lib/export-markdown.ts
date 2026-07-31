@@ -57,6 +57,7 @@ export function atendimentoToMarkdown(a: AtendimentoExport): string {
     linha('PDV', a.pdv),
     linha('Sentimento', a.sentimento_cliente),
     linha('Nota', a.nota),
+    linha('Validado por', a.validado_por),
   ].filter(Boolean)
 
   const partes = [`## ${titulo}`, '', campos.join('\n')]
@@ -66,6 +67,9 @@ export function atendimentoToMarkdown(a: AtendimentoExport): string {
   }
   if (a.solucao_aplicada) {
     partes.push('', `**Solução aplicada:**`, '', a.solucao_aplicada)
+  }
+  if (a.validacao_transf) {
+    partes.push('', `**Validação da transferência:**`, '', a.validacao_transf)
   }
   // Conversa real (banco de mensagens) tem prioridade sobre a transcrição.
   const conversa = a.conversa?.trim() || a.transcricao?.trim()

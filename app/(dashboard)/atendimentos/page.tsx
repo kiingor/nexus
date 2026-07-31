@@ -218,45 +218,17 @@ function resolvePreset(preset: PeriodPreset): { from: string; to: string } | nul
 function buildDateRange(
   fromDay: string,
   toDay: string,
-  hour: string
+  fromTime: string,
+  toTime: string
 ): { from?: string; to?: string } {
   if (!fromDay) return {}
-
-  // Período (dois dias diferentes) — ignora hour
-  if (toDay && toDay !== fromDay) {
-    // Garante from <= to mesmo se o usuário inverter a ordem
-    const [start, end] = fromDay <= toDay ? [fromDay, toDay] : [toDay, fromDay]
-    return {
-      from: `${start}T00:00:00-03:00`,
-      to: `${end}T23:59:59.999-03:00`,
-    }
-  }
-
-  // Dia único com hour="all" → dia inteiro
-  if (hour === 'all' || hour === '') {
-    return {
-      from: `${fromDay}T00:00:00-03:00`,
-      to: `${fromDay}T23:59:59.999-03:00`,
-    }
-  }
-
-  // Dia único com hora específica
-  const h = Number(hour)
-  const nextH = h + 1
-  const pad = (n: number) => String(n).padStart(2, '0')
-  if (nextH >= 24) {
-    // Última faixa 23:00 → próximo dia 00:00
-    const d = new Date(`${fromDay}T00:00:00-03:00`)
-    d.setDate(d.getDate() + 1)
-    const nextDay = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-    return {
-      from: `${fromDay}T23:00:00-03:00`,
-      to: `${nextDay}T00:00:00-03:00`,
-    }
-  }
+  const endDay = toDay || fromDay
+  const [start, end] = fromDay <= endDay ? [fromDay, endDay] : [endDay, fromDay]
   return {
-    from: `${fromDay}T${pad(h)}:00:00-03:00`,
-    to: `${fromDay}T${pad(nextH)}:00:00-03:00`,
+    from: `${start}T${fromTime || '00:00'}:00-03:00`,
+    // Sem hora final, inclui o dia inteiro. O backend considera o limite
+    // final inclusivo, portanto um atendimento exatamente às 18:00 entra.
+    to: `${end}T${toTime || '23:59'}:${toTime ? '00' : '59.999'}-03:00`,
   }
 }
 
@@ -289,7 +261,9 @@ export default function AtendimentosPage() {
   // Quando preenchido e diferente de `fromDate`, vira intervalo e o filtro
   // de hora abaixo é ignorado pela query (e desabilitado no UI).
   const [toDate, setToDate] = useState('')
-  const [hourFilter, setHourFilter] = useState<'all' | string>('all')
+  const [fromTime, setFromTime] = useState('')
+  const [toTime, setToTime] = useState('')
+  const [loadError, setLoadError] = useState('')
   const [sentimentoFilter, setSentimentoFilter] = useState<SentimentoFilter>('all')
   const [pdvFilter, setPdvFilter] = useState('')
   // Classificação vinda do n8n (cadastros, pix, sped...). Vazio = todos.
@@ -306,7 +280,8 @@ export default function AtendimentosPage() {
       setToDate(range.to)
       // Em período de vários dias, hour não se aplica.
       if (range.from && range.to && range.from !== range.to) {
-        setHourFilter('all')
+        setFromTime('')
+        setToTime('')
       }
     }
   }, [])
@@ -377,7 +352,8 @@ export default function AtendimentosPage() {
     comProblema,
     fromDate,
     toDate,
-    hourFilter,
+    fromTime,
+    toTime,
     sentimentoFilter,
     searchDebounced,
     pdvFilter,
@@ -396,7 +372,7 @@ export default function AtendimentosPage() {
       if (tipoAtendimentoFilter) params.set('tipo_atendimento', tipoAtendimentoFilter)
       if (comProblema) params.set('com_problema', 'true')
       if (searchDebounced) params.set('search', searchDebounced)
-      const { from, to } = buildDateRange(fromDate, toDate, hourFilter)
+      const { from, to } = buildDateRange(fromDate, toDate, fromTime, toTime)
       if (from) params.set('from', from)
       if (to) params.set('to', to)
       if (includePagination) {
@@ -416,7 +392,8 @@ export default function AtendimentosPage() {
       searchDebounced,
       fromDate,
       toDate,
-      hourFilter,
+      fromTime,
+      toTime,
       page,
     ]
   )
@@ -425,10 +402,12 @@ export default function AtendimentosPage() {
   // botão "Atualizar" pra não piscar o conteúdo entre fetches rápidos.
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
+    setLoadError('')
     try {
       const params = buildQueryParams(true)
       const res = await fetch(`/api/atendimentos?${params.toString()}`)
       const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || `Erro HTTP ${res.status}`)
       // Resposta nova: { data, total, page, pageSize, totalPages }
       // Mantém retrocompatibilidade com formato array bruto, por segurança.
       if (Array.isArray(data)) {
@@ -440,10 +419,11 @@ export default function AtendimentosPage() {
         setTotalPages(Number(data?.totalPages) || 1)
         setTotalFiltered(Number(data?.total) || 0)
       }
-    } catch {
+    } catch (err) {
       setRecords([])
       setTotalPages(1)
       setTotalFiltered(0)
+      setLoadError(err instanceof Error ? err.message : 'Não foi possível consultar os atendimentos.')
     } finally {
       if (!silent) setLoading(false)
     }
@@ -945,35 +925,28 @@ export default function AtendimentosPage() {
           </div>
         )}
 
-        {(() => {
-          const isPeriodo = !!toDate && toDate !== fromDate
-          const hourDisabled = !fromDate || isPeriodo
-          const hourTitle = !fromDate
-            ? 'Escolha um dia primeiro'
-            : isPeriodo
-              ? 'Filtro de hora indisponível em período (vários dias)'
-              : 'Faixa de hora'
-          return (
-            <select
-              value={isPeriodo ? 'all' : hourFilter}
-              onChange={(e) => setHourFilter(e.target.value)}
-              disabled={hourDisabled}
-              title={hourTitle}
-              className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-40 disabled:cursor-not-allowed [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
-            >
-              <option value="all">Dia todo</option>
-              {Array.from({ length: 24 }).map((_, h) => {
-                const from = String(h).padStart(2, '0')
-                const to = String((h + 1) % 24).padStart(2, '0')
-                return (
-                  <option key={h} value={String(h)}>
-                    {from}:00 – {to}:00
-                  </option>
-                )
-              })}
-            </select>
-          )
-        })()}
+        {periodPreset !== 'todos' && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wider text-muted">Das</span>
+            <input
+              type="time"
+              value={fromTime}
+              onChange={(e) => setFromTime(e.target.value)}
+              disabled={!fromDate}
+              title="Hora inicial (vazio = 00:00)"
+              className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-40 [color-scheme:dark]"
+            />
+            <span className="text-[10px] uppercase tracking-wider text-muted">Até</span>
+            <input
+              type="time"
+              value={toTime}
+              onChange={(e) => setToTime(e.target.value)}
+              disabled={!fromDate}
+              title="Hora final (vazio = 23:59)"
+              className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 disabled:opacity-40 [color-scheme:dark]"
+            />
+          </div>
+        )}
 
         {periodPreset !== 'todos' && (
           <button
@@ -982,12 +955,19 @@ export default function AtendimentosPage() {
               setPeriodPreset('todos')
               setFromDate('')
               setToDate('')
-              setHourFilter('all')
+              setFromTime('')
+              setToTime('')
             }}
             className="text-xs text-muted hover:text-primary underline underline-offset-2"
           >
             Limpar data
           </button>
+        )}
+
+        {loadError && (
+          <div className="w-full rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            Falha ao consultar o banco: {loadError}
+          </div>
         )}
 
         <label className="flex items-center gap-2 text-sm text-secondary cursor-pointer select-none">
@@ -1040,7 +1020,7 @@ export default function AtendimentosPage() {
           <p className="text-primary font-medium mb-1">Nenhum atendimento unido nesta página</p>
           <p className="text-sm text-muted">
             O agrupamento é feito sobre os atendimentos da página atual. Tente
-            navegar em outras páginas ou desmarcar "Só unidos".
+            navegar em outras páginas ou desmarcar &quot;Só unidos&quot;.
           </p>
         </div>
       ) : (

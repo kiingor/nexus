@@ -156,6 +156,36 @@ export interface MonitoriaInput {
   questionario?: Questionario
 }
 
+// Monitoramento de qualidade do Nexus
+export interface MonitoramentoNexusRecord {
+  id: number
+  atendente: string | null
+  normalizacao_ok: boolean
+  nota_geral: number | null
+  classificacao_qualidade: string | null
+  produto_ou_assunto: string | null
+  motivo_do_contato: string | null
+  motivo_identificado_corretamente_pelo_bot: string | null
+  avaliacao_clareza: number | null
+  avaliacao_empatia_e_tom: number | null
+  avaliacao_compreensao_do_contexto: number | null
+  avaliacao_adequacao_dos_proximos_passos: number | null
+  avaliacao_resolucao_ou_encaminhamento: number | null
+  avaliacao_justificativa_resumida: string | null
+  linguagem_inadequada_identificada: string | null
+  linguagem_inadequada_tipo: string | null
+  linguagem_inadequada_sequencias_relacionadas: unknown[]
+  irritacao_nivel: string | null
+  irritacao_evidencia_resumida: string | null
+  prioridade: string | null
+  riscos_e_pontos_importantes: unknown[]
+  proxima_acao_recomendada: string | null
+  resumo_executivo: string | null
+  created_at: string
+  nome_cliente: string | null
+  cnpj_cliente: string | null
+}
+
 // ── Atendimentos (Central de Ligações Suporte IA) ──
 
 export type AtendimentoStatus =
@@ -225,6 +255,7 @@ export interface AtendimentoRecord {
   validado_em: string | null      // ISO timestamp
   validado_por: string | null     // email do responsável (vem do auth)
   validacao_comentario: string | null
+  validacao_transf: string | null
   // Sub-categoria do atendimento (preenchida pelo classificador AI do n8n).
   // Ex: 'erro_337', 'boleto_mensalidade', 'suporte_geral', etc.
   tipo_atendimento: string | null

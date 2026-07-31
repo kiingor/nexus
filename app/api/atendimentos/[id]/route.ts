@@ -85,6 +85,13 @@ export async function PATCH(
         : null
   }
 
+  if ('validacao_transf' in body) {
+    update.validacao_transf =
+      typeof body.validacao_transf === 'string' && body.validacao_transf.trim()
+        ? body.validacao_transf.trim()
+        : null
+  }
+
   // Reclassificação manual de status — caso típico é o reviewer marcar
   // como "resolvido_parcialmente" um atendimento que veio como "transferida"
   // mas foi parcialmente resolvido antes da transferência.

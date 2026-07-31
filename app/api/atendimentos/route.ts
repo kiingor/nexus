@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from('atendimentos')
     .select('*', { count: 'exact' })
-    .order('criado_em', { ascending: false, nullsFirst: false })
+    .order('data_hora_chegada', { ascending: false, nullsFirst: false })
     .order('id', { ascending: false })
     .range(offset, offset + pageSize - 1)
 
@@ -41,8 +41,8 @@ export async function GET(request: NextRequest) {
   if (destino) query = query.eq('destino', destino)
   if (cnpj) query = query.eq('cnpj', cnpj)
   if (phone) query = query.eq('phone', phone)
-  if (from) query = query.gte('criado_em', from)
-  if (to) query = query.lt('criado_em', to)
+  if (from) query = query.gte('data_hora_chegada', from)
+  if (to) query = query.lte('data_hora_chegada', to)
   if (soComProblema)
     query = query.eq('problema_extraido->>tem_problema_extraivel', 'true')
   if (tipoContato === 'ligacao' || tipoContato === 'chat')

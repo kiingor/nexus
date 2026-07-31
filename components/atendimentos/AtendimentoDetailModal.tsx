@@ -366,7 +366,9 @@ function ValidationSection({
   const isValidated = !!record.validado
   // Modo edição: liga quando ainda não validado, ou quando clica em "Editar"
   const [editing, setEditing] = useState(!isValidated)
-  const [comentario, setComentario] = useState(record.validacao_comentario ?? '')
+  const [comentario, setComentario] = useState(
+    record.validacao_transf ?? record.validacao_comentario ?? ''
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
@@ -382,10 +384,10 @@ function ValidationSection({
 
   // Quando o record muda (troca de aba ou refresh), re-sincroniza estado.
   useEffect(() => {
-    setComentario(record.validacao_comentario ?? '')
+    setComentario(record.validacao_transf ?? record.validacao_comentario ?? '')
     setEditing(!record.validado)
     setError(null)
-  }, [record.id, record.validado, record.validacao_comentario])
+  }, [record.id, record.validado, record.validacao_comentario, record.validacao_transf])
 
   async function save(novoValidado: boolean) {
     setSaving(true)
@@ -397,7 +399,7 @@ function ValidationSection({
         body: JSON.stringify({
           validado: novoValidado,
           validado_por: userEmail ?? undefined,
-          validacao_comentario: novoValidado ? comentario.trim() || null : null,
+          validacao_transf: comentario.trim() || null,
         }),
       })
       const json = await res.json()
@@ -433,9 +435,9 @@ function ValidationSection({
                   </>
                 )}
               </p>
-              {record.validacao_comentario && (
+              {(record.validacao_transf || record.validacao_comentario) && (
                 <p className="mt-2 text-sm text-primary whitespace-pre-wrap">
-                  {record.validacao_comentario}
+                  {record.validacao_transf || record.validacao_comentario}
                 </p>
               )}
             </div>
@@ -473,13 +475,13 @@ function ValidationSection({
         </h3>
       </div>
       <label className="block text-[11px] text-secondary mb-1.5">
-        Comentário <span className="text-secondary">(opcional — observações sobre a validação)</span>
+        Validação da transferência <span className="text-secondary">(opcional)</span>
       </label>
       <textarea
         value={comentario}
         onChange={(e) => setComentario(e.target.value)}
         rows={3}
-        placeholder="Ex: Resposta da IA foi adequada, sem necessidade de retrabalho."
+        placeholder="Descreva a validação da transferência..."
         className="w-full px-3 py-2 rounded-xl bg-base border border-glass-border text-primary text-sm focus:outline-none focus:border-orange-500/50 placeholder:text-secondary resize-none"
       />
       {error && (
@@ -498,7 +500,7 @@ function ValidationSection({
               disabled={saving}
               onClick={() => {
                 setEditing(false)
-                setComentario(record.validacao_comentario ?? '')
+                setComentario(record.validacao_transf ?? record.validacao_comentario ?? '')
                 setError(null)
               }}
               className="text-xs px-3 py-1.5 rounded-lg border border-glass-border bg-glass text-secondary hover:text-primary transition-colors cursor-pointer disabled:opacity-50"

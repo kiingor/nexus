@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
   const from = searchParams.get('from')
   const to = searchParams.get('to')
   const soComProblema = searchParams.get('com_problema') === 'true'
+  const soValidados = searchParams.get('validados') === 'true'
   const search = (searchParams.get('search') || '').trim()
   const sentimento = searchParams.get('sentimento') // positivo | neutro | negativo
   const tipoContato = searchParams.get('tipo_contato')  // 'ligacao' | 'chat'
@@ -45,6 +46,8 @@ export async function GET(request: NextRequest) {
   if (to) query = query.lte('data_hora_chegada', to)
   if (soComProblema)
     query = query.eq('problema_extraido->>tem_problema_extraivel', 'true')
+  if (soValidados)
+    query = query.or('validado.eq.true,validacao_transf.not.is.null')
   if (tipoContato === 'ligacao' || tipoContato === 'chat')
     query = query.eq('tipo_contato', tipoContato)
   if (pdv) query = query.eq('pdv', pdv)

@@ -253,6 +253,7 @@ export default function AtendimentosPage() {
   const [destinoFilter, setDestinoFilter] = useState<DestinoFilter>('all')
   const [tipoContatoFilter, setTipoContatoFilter] = useState<TipoContatoFilter>('all')
   const [comProblema, setComProblema] = useState(false)
+  const [soValidados, setSoValidados] = useState(false)
   // Filtro client-side: mostra só grupos resultantes do agrupamento por CNPJ
   // (mais de um atendimento unido). Como o agrupamento é client-side,
   // este filtro também tem que ser — não vai pro server e não reseta página.
@@ -359,6 +360,7 @@ export default function AtendimentosPage() {
     destinoFilter,
     tipoContatoFilter,
     comProblema,
+    soValidados,
     fromDate,
     toDate,
     fromTime,
@@ -381,6 +383,7 @@ export default function AtendimentosPage() {
       if (pdvFilter) params.set('pdv', pdvFilter)
       if (tipoAtendimentoFilter) params.set('tipo_atendimento', tipoAtendimentoFilter)
       if (comProblema) params.set('com_problema', 'true')
+      if (soValidados) params.set('validados', 'true')
       if (searchDebounced) params.set('search', searchDebounced)
       const { from, to } = buildDateRange(
         fromDate,
@@ -405,6 +408,7 @@ export default function AtendimentosPage() {
       pdvFilter,
       tipoAtendimentoFilter,
       comProblema,
+      soValidados,
       searchDebounced,
       fromDate,
       toDate,
@@ -1005,6 +1009,16 @@ export default function AtendimentosPage() {
             className="accent-orange-500"
           />
           Só com problema extraído
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-secondary cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={soValidados}
+            onChange={(e) => setSoValidados(e.target.checked)}
+            className="accent-green-500"
+          />
+          Só validados
         </label>
 
         <label

@@ -54,6 +54,7 @@ function applyFilters<T extends FilterableQuery<T>>(
   const from = searchParams.get('from')
   const to = searchParams.get('to')
   const soComProblema = searchParams.get('com_problema') === 'true'
+  const soValidados = searchParams.get('validados') === 'true'
   const search = (searchParams.get('search') || '').trim()
   const sentimento = searchParams.get('sentimento')
   const tipoContato = searchParams.get('tipo_contato')
@@ -65,6 +66,7 @@ function applyFilters<T extends FilterableQuery<T>>(
   if (from) q = q.gte('data_hora_chegada', from)
   if (to) q = q.lte('data_hora_chegada', to)
   if (soComProblema) q = q.eq('problema_extraido->>tem_problema_extraivel', 'true')
+  if (soValidados) q = q.or('validado.eq.true,validacao_transf.not.is.null')
   if (tipoContato === 'ligacao' || tipoContato === 'chat')
     q = q.eq('tipo_contato', tipoContato)
 

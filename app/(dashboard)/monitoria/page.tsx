@@ -21,18 +21,9 @@ const CRITERIOS = [
 
 const PAGE_SIZE = 6
 
-function valores(record: MonitoramentoNexusRecord): number[] {
-  return CRITERIOS.map(([, key]) => record[key]).filter((n): n is number => n != null)
-}
-
-function mediaRecord(record: MonitoramentoNexusRecord): number | null {
-  const nums = valores(record)
+function mediaNotaGeral(records: MonitoramentoNexusRecord[]): number | null {
+  const nums = records.map(record => record.nota_geral).filter((nota): nota is number => nota != null)
   return nums.length ? nums.reduce((sum, n) => sum + n, 0) / nums.length : null
-}
-
-function media(records: MonitoramentoNexusRecord[]): number {
-  const nums = records.flatMap(valores)
-  return nums.length ? nums.reduce((sum, n) => sum + n, 0) / nums.length : 0
 }
 
 function normalizar(value: string | null | undefined) {
@@ -40,11 +31,11 @@ function normalizar(value: string | null | undefined) {
 }
 
 function nivel(record: MonitoramentoNexusRecord) {
-  const avg = mediaRecord(record) ?? 0
+  const nota = record.nota_geral ?? 0
   const prioridade = normalizar(record.prioridade)
-  if (prioridade.includes('critic') || avg < 2) return 'critical'
-  if (prioridade.includes('alt') || avg < 3) return 'warning'
-  if (avg >= 4) return 'good'
+  if (prioridade.includes('critic') || nota < 4) return 'critical'
+  if (prioridade.includes('alt') || nota < 6) return 'warning'
+  if (nota >= 8) return 'good'
   return 'neutral'
 }
 
@@ -101,11 +92,11 @@ export default function MonitoriaPage() {
       const name = record.atendente?.trim() || 'Atendente não identificado'
       map.set(name, [...(map.get(name) || []), record])
     }
-    return Array.from(map, ([name, items]) => ({ name, items, avg: media(items) })).sort((a, b) => b.avg - a.avg)
+    return Array.from(map, ([name, items]) => ({ name, items, avg: mediaNotaGeral(items) })).sort((a, b) => (b.avg ?? -1) - (a.avg ?? -1))
   }, [filtered])
 
   const stats = useMemo(() => ({
-    average: media(filtered),
+    average: mediaNotaGeral(filtered),
     attendants: groups.length,
     total: filtered.length,
     alerts: filtered.filter(r => nivel(r) === 'critical' || nivel(r) === 'warning').length,
@@ -129,7 +120,7 @@ export default function MonitoriaPage() {
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Metric icon={<Sparkles size={17} />} label="Média dos critérios" value={stats.average ? stats.average.toFixed(1) : '—'} suffix="/ 5" accent />
+        <Metric icon={<Sparkles size={17} />} label="Média geral" value={stats.average == null ? '—' : stats.average.toFixed(1)} suffix="/ 10" accent />
         <Metric icon={<Users size={17} />} label="Atendentes" value={String(stats.attendants)} />
         <Metric icon={<ClipboardCheck size={17} />} label="Atendimentos" value={String(stats.total)} />
         <Metric icon={<AlertTriangle size={17} />} label="Pontos de atenção" value={String(stats.alerts)} danger={stats.alerts > 0} />
@@ -176,7 +167,7 @@ export default function MonitoriaPage() {
                 </div>
                 <p className="line-clamp-1 text-sm text-secondary">{group.items[0]?.avaliacao_justificativa_resumida || group.items[0]?.resumo_executivo || 'Sem observação geral registrada.'}</p>
               </div>
-              <div className="hidden text-right sm:block"><div className="font-display text-3xl font-bold text-orange-400">{group.avg.toFixed(1)}</div><div className="text-[10px] uppercase tracking-wider text-muted">média / 5</div></div>
+              <div className="hidden text-right sm:block"><div className="font-display text-3xl font-bold text-orange-400">{group.avg == null ? '—' : group.avg.toFixed(1)}</div><div className="text-[10px] uppercase tracking-wider text-muted">média / 10</div></div>
               {expanded ? <ChevronUp className="text-muted" size={18} /> : <ChevronDown className="text-muted" size={18} />}
             </button>
             {expanded && <div className="border-t border-glass-border bg-black/10 p-3">
@@ -197,7 +188,7 @@ export default function MonitoriaPage() {
 function AtendimentoCard({ record, onOpen }: { record: MonitoramentoNexusRecord; onOpen: () => void }) {
   const kind = nivel(record)
   const tone = tones[kind]
-  const avg = mediaRecord(record)
+  const notaGeral = record.nota_geral
   const risks = Array.isArray(record.riscos_e_pontos_importantes) ? record.riscos_e_pontos_importantes.map(String).filter(Boolean) : []
   return <article onClick={onOpen} className={`group cursor-pointer rounded-2xl border border-glass-border border-t-2 ${tone.line} bg-surface/80 p-3 transition hover:border-orange-500/30`}>
     <div className="mb-3 flex items-start justify-between gap-3">
@@ -206,7 +197,7 @@ function AtendimentoCard({ record, onOpen }: { record: MonitoramentoNexusRecord;
         <h3 className="truncate font-display text-base font-bold text-primary">{record.nome_cliente || 'Cliente não identificado'}</h3>
         <p className="mt-0.5 truncate text-xs text-muted">{record.produto_ou_assunto || record.motivo_do_contato || 'Assunto não informado'}{record.cnpj_cliente ? ` · ${formatDocument(record.cnpj_cliente)}` : ''}</p>
       </div>
-      <div className="shrink-0 text-right"><span className={`font-display text-2xl font-bold ${tone.text}`}>{avg?.toFixed(1) || '—'}</span><span className="ml-1 text-[10px] text-muted">/ 5</span><p className="text-[10px] text-muted">{formatDate(record.created_at)}</p></div>
+      <div className="shrink-0 text-right"><span className={`font-display text-2xl font-bold ${tone.text}`}>{notaGeral == null ? '—' : notaGeral.toFixed(1)}</span><span className="ml-1 text-[10px] text-muted">/ 10</span><p className="text-[10px] text-muted">{formatDate(record.created_at)}</p></div>
     </div>
 
     <p className="mb-3 line-clamp-2 text-xs leading-relaxed text-secondary">{record.avaliacao_justificativa_resumida || record.resumo_executivo || 'Sem observação registrada para este atendimento.'}</p>

@@ -240,6 +240,11 @@ function MonitoriaModal({ record, onClose }: { record: MonitoramentoNexusRecord 
         <FullField label="Data" value={new Date(record.created_at).toLocaleString('pt-BR')} />
         <FullField label="CNPJ/CPF" value={record.cnpj_cliente ? formatDocument(record.cnpj_cliente) : null} />
       </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <FullField label="Nota geral" value={record.nota_geral == null ? null : `${record.nota_geral} / 10`} />
+        <FullField label="Classificação da qualidade" value={record.classificacao_qualidade} />
+        <FullField label="Normalização" value={record.normalizacao_ok ? 'OK' : 'Com pendência'} />
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <FullField label="Produto ou assunto" value={record.produto_ou_assunto} />
         <FullField label="Motivo do contato" value={record.motivo_do_contato} />

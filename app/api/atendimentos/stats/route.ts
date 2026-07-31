@@ -38,7 +38,7 @@ type Counts = {
 type FilterableQuery<T> = {
   eq: (col: string, val: unknown) => T
   gte: (col: string, val: unknown) => T
-  lt: (col: string, val: unknown) => T
+  lte: (col: string, val: unknown) => T
   or: (filters: string) => T
 }
 

@@ -19,7 +19,34 @@ const CRITERIOS = [
   ['Resolução', 'avaliacao_resolucao_ou_encaminhamento'],
 ] as const
 
-const PAGE_SIZE = 6
+const PAGE_SIZE = 4
+
+type PeriodPreset = 'todos' | 'hoje' | 'ontem' | '3d' | '7d' | '15d' | 'mes' | 'custom'
+
+function toLocalDateStr(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function resolvePreset(preset: PeriodPreset): { from: string; to: string } | null {
+  if (preset === 'custom') return null
+  if (preset === 'todos') return { from: '', to: '' }
+  const today = new Date()
+  const to = toLocalDateStr(today)
+  if (preset === 'hoje') return { from: to, to }
+  if (preset === 'ontem') {
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+    const day = toLocalDateStr(yesterday)
+    return { from: day, to: day }
+  }
+  const daysBack = preset === '3d' ? 2 : preset === '7d' ? 6 : preset === '15d' ? 14 : 29
+  const start = new Date(today)
+  start.setDate(start.getDate() - daysBack)
+  return { from: toLocalDateStr(start), to }
+}
 
 function mediaNotaGeral(records: MonitoramentoNexusRecord[]): number | null {
   const nums = records.map(record => record.nota_geral).filter((nota): nota is number => nota != null)
@@ -55,8 +82,19 @@ export default function MonitoriaPage() {
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [pages, setPages] = useState<Record<string, number>>({})
   const [selected, setSelected] = useState<MonitoramentoNexusRecord | null>(null)
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('todos')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
+
+  const handlePresetChange = useCallback((preset: PeriodPreset) => {
+    setPeriodPreset(preset)
+    setPages({})
+    const range = resolvePreset(preset)
+    if (range) {
+      setFromDate(range.from)
+      setToDate(range.to)
+    }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -138,13 +176,22 @@ export default function MonitoriaPage() {
             {qualities.map(item => <option key={item}>{item}</option>)}
           </select>
         </label>
-        <div className="flex items-center gap-2">
+        <select value={periodPreset} onChange={e => handlePresetChange(e.target.value as PeriodPreset)} className="rounded-xl border border-orange-500/30 bg-surface px-3 py-2.5 text-sm text-orange-400 outline-none focus:border-orange-500/60">
+          <option value="todos">Todo o período</option>
+          <option value="hoje">Hoje</option>
+          <option value="ontem">Ontem</option>
+          <option value="3d">Últimos 3 dias</option>
+          <option value="7d">Últimos 7 dias</option>
+          <option value="15d">Últimos 15 dias</option>
+          <option value="mes">Último mês</option>
+          <option value="custom">Personalizado</option>
+        </select>
+        {periodPreset !== 'todos' && <div className="flex items-center gap-2">
           <span className="text-[10px] uppercase tracking-wider text-muted">De</span>
-          <input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setPages({}) }} className="rounded-xl border border-glass-border bg-surface px-3 py-2.5 text-sm text-secondary [color-scheme:dark] focus:border-orange-500/40 focus:outline-none" />
+          <input type="date" value={fromDate} disabled={periodPreset !== 'custom'} onChange={e => { setFromDate(e.target.value); setPages({}) }} className="rounded-xl border border-glass-border bg-surface px-3 py-2.5 text-sm text-secondary [color-scheme:dark] focus:border-orange-500/40 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
           <span className="text-[10px] uppercase tracking-wider text-muted">Até</span>
-          <input type="date" value={toDate} min={fromDate || undefined} onChange={e => { setToDate(e.target.value); setPages({}) }} className="rounded-xl border border-glass-border bg-surface px-3 py-2.5 text-sm text-secondary [color-scheme:dark] focus:border-orange-500/40 focus:outline-none" />
-          {(fromDate || toDate) && <button onClick={() => { setFromDate(''); setToDate(''); setPages({}) }} className="text-xs text-muted underline hover:text-primary">Limpar</button>}
-        </div>
+          <input type="date" value={toDate} min={fromDate || undefined} disabled={periodPreset !== 'custom' || !fromDate} onChange={e => { setToDate(e.target.value); setPages({}) }} className="rounded-xl border border-glass-border bg-surface px-3 py-2.5 text-sm text-secondary [color-scheme:dark] focus:border-orange-500/40 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
+        </div>}
       </div>
 
       {loading ? <div className="flex justify-center py-20"><Spinner size="md" /></div>
@@ -161,13 +208,13 @@ export default function MonitoriaPage() {
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-orange-500/20 bg-orange-500/10 font-display text-lg font-bold text-orange-400">{initials(group.name)}</div>
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex flex-wrap items-center gap-2">
-                  <h2 className="truncate font-display text-xl font-bold text-primary">{group.name}</h2>
+                  <h2 className="truncate font-display text-lg font-bold text-primary">{group.name}</h2>
                   <span className="rounded-full border border-glass-border bg-white/[0.03] px-2.5 py-1 text-[10px] uppercase tracking-wider text-muted">{group.items.length} atendimento{group.items.length === 1 ? '' : 's'}</span>
                   {critical > 0 && <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-400">{critical} {critical === 1 ? 'alerta' : 'alertas'}</span>}
                 </div>
-                <p className="line-clamp-1 text-sm text-secondary">{group.items[0]?.avaliacao_justificativa_resumida || group.items[0]?.resumo_executivo || 'Sem observação geral registrada.'}</p>
+                <p className="line-clamp-1 text-xs text-secondary">{group.items[0]?.avaliacao_justificativa_resumida || group.items[0]?.resumo_executivo || 'Sem observação geral registrada.'}</p>
               </div>
-              <div className="hidden text-right sm:block"><div className="font-display text-3xl font-bold text-orange-400">{group.avg == null ? '—' : group.avg.toFixed(1)}</div><div className="text-[10px] uppercase tracking-wider text-muted">média / 10</div></div>
+              <div className="hidden text-right sm:block"><div className="font-display text-2xl font-bold text-orange-400">{group.avg == null ? '—' : group.avg.toFixed(1)}</div><div className="text-[9px] uppercase tracking-wider text-muted">média / 10</div></div>
               {expanded ? <ChevronUp className="text-muted" size={18} /> : <ChevronDown className="text-muted" size={18} />}
             </button>
             {expanded && <div className="border-t border-glass-border bg-black/10 p-3">
@@ -194,13 +241,13 @@ function AtendimentoCard({ record, onOpen }: { record: MonitoramentoNexusRecord;
     <div className="mb-3 flex items-start justify-between gap-3">
       <div className="min-w-0">
         <div className={`mb-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-[0.16em] ${tone.bg} ${tone.border} ${tone.text}`}><Bot size={11} />{record.classificacao_qualidade || 'Sem classificação'}</div>
-        <h3 className="truncate font-display text-base font-bold text-primary">{record.nome_cliente || 'Cliente não identificado'}</h3>
-        <p className="mt-0.5 truncate text-xs text-muted">{record.produto_ou_assunto || record.motivo_do_contato || 'Assunto não informado'}{record.cnpj_cliente ? ` · ${formatDocument(record.cnpj_cliente)}` : ''}</p>
+        <h3 className="truncate font-display text-sm font-bold text-primary">{record.nome_cliente || 'Cliente não identificado'}</h3>
+        <p className="mt-0.5 truncate text-[11px] text-muted">{record.produto_ou_assunto || record.motivo_do_contato || 'Assunto não informado'}{record.cnpj_cliente ? ` · ${formatDocument(record.cnpj_cliente)}` : ''}</p>
       </div>
-      <div className="shrink-0 text-right"><span className={`font-display text-2xl font-bold ${tone.text}`}>{notaGeral == null ? '—' : notaGeral.toFixed(1)}</span><span className="ml-1 text-[10px] text-muted">/ 10</span><p className="text-[10px] text-muted">{formatDate(record.created_at)}</p></div>
+      <div className="shrink-0 text-right"><span className={`font-display text-xl font-bold ${tone.text}`}>{notaGeral == null ? '—' : notaGeral.toFixed(1)}</span><span className="ml-1 text-[9px] text-muted">/ 10</span><p className="text-[9px] text-muted">{formatDate(record.created_at)}</p></div>
     </div>
 
-    <p className="mb-3 line-clamp-2 text-xs leading-relaxed text-secondary">{record.avaliacao_justificativa_resumida || record.resumo_executivo || 'Sem observação registrada para este atendimento.'}</p>
+    <p className="mb-3 line-clamp-2 text-[11px] leading-relaxed text-secondary">{record.avaliacao_justificativa_resumida || record.resumo_executivo || 'Sem observação registrada para este atendimento.'}</p>
     <div className="mb-3 grid grid-cols-2 gap-x-3 gap-y-2 border-y border-glass-border py-3 sm:grid-cols-5">
       {CRITERIOS.map(([label, key]) => <Score key={key} label={label} value={record[key]} tone={tone.bar} />)}
     </div>

@@ -30,7 +30,9 @@ export async function GET(request: NextRequest) {
 
   // Sem filtro temporal, preserva a ordem natural histórica (`criado_em`).
   // Com filtro, ordena pela mesma coluna consultada (`data_hora_chegada`).
-  const orderColumn = from || to ? 'data_hora_chegada' : 'criado_em'
+  // Mantém a ordem natural. A data exibida usa `data_hora_chegada` com
+  // fallback em `criado_em`, mas muitos chats antigos só possuem criado_em.
+  const orderColumn = 'criado_em'
   let query = supabase
     .from('atendimentos')
     .select('*', { count: 'exact' })
@@ -42,8 +44,23 @@ export async function GET(request: NextRequest) {
   if (destino) query = query.eq('destino', destino)
   if (cnpj) query = query.eq('cnpj', cnpj)
   if (phone) query = query.eq('phone', phone)
-  if (from) query = query.gte('data_hora_chegada', from)
-  if (to) query = query.lte('data_hora_chegada', to)
+  // Filtra pela mesma data efetiva mostrada na tabela:
+  // COALESCE(data_hora_chegada, criado_em). O PostgREST não permite ordenar
+  // diretamente por COALESCE, então expressamos a condição em dois ramos.
+  if (from && to) {
+    query = query.or(
+      `and(data_hora_chegada.gte.${from},data_hora_chegada.lte.${to}),` +
+      `and(data_hora_chegada.is.null,criado_em.gte.${from},criado_em.lte.${to})`
+    )
+  } else if (from) {
+    query = query.or(
+      `data_hora_chegada.gte.${from},and(data_hora_chegada.is.null,criado_em.gte.${from})`
+    )
+  } else if (to) {
+    query = query.or(
+      `data_hora_chegada.lte.${to},and(data_hora_chegada.is.null,criado_em.lte.${to})`
+    )
+  }
   if (soComProblema)
     query = query.eq('problema_extraido->>tem_problema_extraivel', 'true')
   if (soValidados)

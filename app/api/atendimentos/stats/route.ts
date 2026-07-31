@@ -63,8 +63,20 @@ function applyFilters<T extends FilterableQuery<T>>(
   if (destino) q = q.eq('destino', destino)
   if (cnpj) q = q.eq('cnpj', cnpj)
   if (phone) q = q.eq('phone', phone)
-  if (from) q = q.gte('data_hora_chegada', from)
-  if (to) q = q.lte('data_hora_chegada', to)
+  if (from && to) {
+    q = q.or(
+      `and(data_hora_chegada.gte.${from},data_hora_chegada.lte.${to}),` +
+      `and(data_hora_chegada.is.null,criado_em.gte.${from},criado_em.lte.${to})`
+    )
+  } else if (from) {
+    q = q.or(
+      `data_hora_chegada.gte.${from},and(data_hora_chegada.is.null,criado_em.gte.${from})`
+    )
+  } else if (to) {
+    q = q.or(
+      `data_hora_chegada.lte.${to},and(data_hora_chegada.is.null,criado_em.lte.${to})`
+    )
+  }
   if (soComProblema) q = q.eq('problema_extraido->>tem_problema_extraivel', 'true')
   if (soValidados) q = q.or('validado.eq.true,validacao_transf.not.is.null')
   if (tipoContato === 'ligacao' || tipoContato === 'chat')

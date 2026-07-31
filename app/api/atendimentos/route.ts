@@ -27,13 +27,13 @@ export async function GET(request: NextRequest) {
   const pdv = searchParams.get('pdv')
   const tipoAtendimento = searchParams.get('tipo_atendimento') // classificação do n8n
 
-  // Ordena por criado_em desc, nulos no fim, fallback por id.
-  // tipo_contato agora é coluna direta em atendimentos, então select('*')
-  // já traz junto.
+  // Sem filtro temporal, preserva a ordem natural histórica (`criado_em`).
+  // Com filtro, ordena pela mesma coluna consultada (`data_hora_chegada`).
+  const orderColumn = from || to ? 'data_hora_chegada' : 'criado_em'
   let query = supabase
     .from('atendimentos')
     .select('*', { count: 'exact' })
-    .order('data_hora_chegada', { ascending: false, nullsFirst: false })
+    .order(orderColumn, { ascending: false, nullsFirst: false })
     .order('id', { ascending: false })
     .range(offset, offset + pageSize - 1)
 

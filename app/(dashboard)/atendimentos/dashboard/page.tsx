@@ -20,7 +20,7 @@ type PeriodPreset = 'todos' | 'hoje' | 'ontem' | '3d' | '7d' | '15d' | 'mes' | '
 // Filtros espelhados da aba Lista — pra que o dashboard mostre agregação
 // sobre o MESMO conjunto que aparece na Lista.
 type StatusFilter = 'all' | 'em_atendimento' | 'transferida' | 'resolvida_ia' | 'resolvido_parcialmente' | 'interrompida'
-type DestinoFilter = 'all' | 'servicedesk' | 'financeiro' | 'comercial' | 'ouvidoria'
+type DestinoFilter = 'all' | 'servicedesk' | 'financeiro' | 'comercial' | 'ouvidoria' | 'parametrizacao'
 type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
 type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
 
@@ -37,6 +37,7 @@ const DESTINO_LABELS: Record<string, string> = {
   financeiro: 'Financeiro',
   comercial: 'Comercial',
   ouvidoria: 'Ouvidoria',
+  parametrizacao: 'Parametrização',
 }
 
 function toLocalDateStr(d: Date): string {
@@ -427,6 +428,7 @@ ${
           <option value="financeiro">Financeiro</option>
           <option value="comercial">Comercial</option>
           <option value="ouvidoria">Ouvidoria</option>
+          <option value="parametrizacao">Parametrização</option>
         </select>
 
         <select

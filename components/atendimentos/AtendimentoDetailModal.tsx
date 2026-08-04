@@ -330,6 +330,7 @@ function destinoChipCls(destino: string): string {
   if (destino === 'financeiro')  return 'bg-purple-500/10 border-purple-500/30 text-purple-300'
   if (destino === 'comercial')   return 'bg-orange-500/10 border-orange-500/30 text-orange-300'
   if (destino === 'ouvidoria')   return 'bg-pink-500/10 border-pink-500/30 text-pink-300'
+  if (destino === 'parametrizacao') return 'bg-teal-500/10 border-teal-500/30 text-teal-300'
   return 'bg-glass border-glass-border text-secondary'
 }
 

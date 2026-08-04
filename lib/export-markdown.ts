@@ -14,6 +14,7 @@ const DESTINO_LABEL: Record<string, string> = {
   financeiro: 'Financeiro',
   comercial: 'Comercial',
   ouvidoria: 'Ouvidoria',
+  parametrizacao: 'Parametrização',
 }
 
 function fmtData(iso: string | null): string {

@@ -75,6 +75,8 @@ function destinoBadge(destino: string | null): { label: string; cls: string } | 
     return { label: 'Comercial', cls: 'bg-orange-500/10 border-orange-500/25 text-orange-400' }
   if (destino === 'ouvidoria')
     return { label: 'Ouvidoria', cls: 'bg-pink-500/10 border-pink-500/25 text-pink-400' }
+  if (destino === 'parametrizacao')
+    return { label: 'Parametrização', cls: 'bg-teal-500/10 border-teal-500/25 text-teal-400' }
   return { label: destino, cls: 'bg-glass border-glass-border text-muted' }
 }
 

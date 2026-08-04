@@ -48,12 +48,16 @@ export async function POST(request: NextRequest) {
   const supabase = createServerClient()
   const body = await request.json()
 
+  const audience =
+    body.audience === 'tecnico' || body.audience === 'cliente' ? body.audience : null
+
   const { data, error } = await supabase
     .from('products')
     .insert({
       name: body.name,
       slug: body.slug,
       description: body.description || null,
+      audience,
     })
     .select()
     .single()

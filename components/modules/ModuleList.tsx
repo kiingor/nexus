@@ -255,9 +255,23 @@ export function ModuleList({ productSlug }: ModuleListProps) {
     <>
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-display font-bold text-primary">
-            {product?.name || productSlug}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-display font-bold text-primary">
+              {product?.name || productSlug}
+            </h1>
+            {product?.audience && (
+              <span
+                title={`Público: ${product.audience === 'cliente' ? 'Cliente' : 'Técnico'}`}
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border whitespace-nowrap ${
+                  product.audience === 'cliente'
+                    ? 'bg-blue-500/10 border-blue-500/25 text-blue-400'
+                    : 'bg-purple-500/10 border-purple-500/25 text-purple-400'
+                }`}
+              >
+                {product.audience === 'cliente' ? 'Cliente' : 'Técnico'}
+              </span>
+            )}
+          </div>
           {product?.description && (
             <p className="text-secondary mt-1">{product.description}</p>
           )}

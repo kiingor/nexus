@@ -1,10 +1,15 @@
 // ── Database Entities ──
 
+// Público-alvo do produto: 'tecnico' (base do técnico) ou 'cliente'.
+// null = ainda não classificado. Herda para todo o conteúdo do produto.
+export type ProductAudience = 'tecnico' | 'cliente'
+
 export interface Product {
   id: string
   name: string
   slug: string
   description: string | null
+  audience: ProductAudience | null
   created_at: string
   created_by: string
 }

@@ -29,13 +29,19 @@ export async function PUT(
   const supabase = createServerClient()
   const body = await request.json()
 
+  // Só grava audience se veio um valor válido (não apaga o atual à toa).
+  const update: Record<string, unknown> = {
+    name: body.name,
+    slug: body.slug,
+    description: body.description || null,
+  }
+  if (body.audience === 'tecnico' || body.audience === 'cliente') {
+    update.audience = body.audience
+  }
+
   const { data, error } = await supabase
     .from('products')
-    .update({
-      name: body.name,
-      slug: body.slug,
-      description: body.description || null,
-    })
+    .update(update)
     .eq('slug', slug)
     .select()
     .single()

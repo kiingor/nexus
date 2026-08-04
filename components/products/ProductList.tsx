@@ -52,7 +52,7 @@ export function ProductList({ showCreateButton = true }: ProductListProps) {
     fetchProducts()
   }, [fetchProducts])
 
-  async function handleCreate(data: { name: string; description: string; slug: string }) {
+  async function handleCreate(data: { name: string; description: string; slug: string; audience: string }) {
     const res = await fetch('/api/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -67,7 +67,7 @@ export function ProductList({ showCreateButton = true }: ProductListProps) {
     }
   }
 
-  async function handleEdit(data: { name: string; description: string; slug: string }) {
+  async function handleEdit(data: { name: string; description: string; slug: string; audience: string }) {
     if (!editingProduct) return
     const res = await fetch(`/api/products/${editingProduct.slug}`, {
       method: 'PUT',

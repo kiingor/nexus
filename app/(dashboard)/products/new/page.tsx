@@ -26,6 +26,7 @@ export default function NewProductPage() {
   const error = (msg: string) => toast(msg, 'error');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [audience, setAudience] = useState<'cliente' | 'tecnico'>('cliente');
   const [loading, setLoading] = useState(false);
 
   const slug = slugify(name);
@@ -43,6 +44,7 @@ export default function NewProductPage() {
       name: name.trim(),
       slug,
       description: description.trim() || null,
+      audience,
       created_by: user.id,
     });
 
@@ -101,6 +103,29 @@ export default function NewProductPage() {
             </span>
           </div>
         )}
+
+        <div>
+          <label className="block text-sm text-[#8A8A85] mb-2">Público-alvo</label>
+          <div className="inline-flex rounded-xl border border-[rgba(255,255,255,0.1)] overflow-hidden">
+            {(['cliente', 'tecnico'] as const).map((op) => (
+              <button
+                key={op}
+                type="button"
+                onClick={() => setAudience(op)}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  audience === op
+                    ? 'bg-[rgba(255,107,0,0.15)] text-[#FF8533]'
+                    : 'text-[#8A8A85] hover:text-[#F5F5F0]'
+                } ${op === 'tecnico' ? 'border-l border-[rgba(255,255,255,0.1)]' : ''}`}
+              >
+                {op === 'cliente' ? 'Cliente' : 'Técnico'}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-[#4A4A48] mt-1.5">
+            Define para quem é o conteúdo — usado pelo agente de IA na busca.
+          </p>
+        </div>
 
         <Textarea
           label="Descrição (opcional)"

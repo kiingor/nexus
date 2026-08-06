@@ -81,8 +81,17 @@ export async function POST(
     return Response.json({ error: error.message }, { status: 500 })
   }
 
-  // Gerar embeddings em background (não bloqueia a resposta)
-  syncItemEmbeddings(data.id).catch(console.error)
+  // Só confirmar a criação depois que o item estiver pesquisável.
+  try {
+    await syncItemEmbeddings(data.id)
+  } catch (embeddingError: unknown) {
+    // A knowledge item that cannot be searched is not a successful create.
+    // Remove the just-created row so callers can retry without duplicates.
+    await supabase.from('knowledge_items').delete().eq('id', data.id)
+    const message = embeddingError instanceof Error ? embeddingError.message : String(embeddingError)
+    console.error('[knowledge/create] embedding sync failed:', message)
+    return Response.json({ error: `Falha ao indexar item: ${message}` }, { status: 502 })
+  }
 
   return Response.json(data, { status: 201 })
 }

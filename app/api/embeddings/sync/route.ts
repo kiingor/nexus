@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       await syncItemEmbeddings(item_id)
     }
 
-    return Response.json({ ok: true })
+    return Response.json({ ok: true, item_id, action })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[embeddings/sync]', message)

@@ -35,6 +35,8 @@ interface Chunk {
   chunk_text: string
 }
 
+const GENERATED_CHUNK_TYPES: Chunk['chunk_type'][] = ['item_full', 'step', 'error_full']
+
 // ---------------------------------------------------------------------------
 // Clients (lazy init)
 // ---------------------------------------------------------------------------
@@ -179,45 +181,80 @@ export async function syncItemEmbeddings(itemId: string): Promise<void> {
     .single()
 
   if (itemError || !item) {
-    console.error('[embeddings] Item not found:', itemId, itemError?.message)
-    return
+    throw new Error(`Item not found: ${itemId}${itemError?.message ? ` (${itemError.message})` : ''}`)
   }
 
   const moduleName = item.modules?.name || 'Unknown'
   const productName = item.modules?.products?.name || 'Unknown'
 
-  // Delete existing embeddings for this item
-  await supabase
-    .from('knowledge_embeddings')
-    .delete()
-    .eq('item_id', itemId)
-
-  // Build chunks and generate embeddings
+  // Generate the complete replacement before changing the vector store. This
+  // keeps the last good index available when a provider fails transiently.
   const chunks = buildChunks(item, moduleName, productName)
+  if (chunks.length === 0) {
+    throw new Error(`Item ${itemId} produced no embedding chunks`)
+  }
 
-  for (const chunk of chunks) {
+  const rows = await Promise.all(chunks.map(async (chunk) => {
+    const embeddingOpenai = await getOpenAIEmbedding(chunk.chunk_text)
+    let embeddingGemini: number[] | null = null
+
     try {
-      const [embeddingOpenai, embeddingGemini] = await Promise.all([
-        getOpenAIEmbedding(chunk.chunk_text),
-        getGeminiEmbedding(chunk.chunk_text),
-      ])
-
-      const row: Record<string, unknown> = {
-        item_id: chunk.item_id,
-        chunk_type: chunk.chunk_type,
-        step_number: chunk.step_number,
-        chunk_text: chunk.chunk_text,
-        embedding_openai: JSON.stringify(embeddingOpenai),
-      }
-
-      if (embeddingGemini) {
-        row.embedding_gemini = JSON.stringify(embeddingGemini)
-      }
-
-      await supabase.from('knowledge_embeddings').insert(row)
+      embeddingGemini = await getGeminiEmbedding(chunk.chunk_text)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error(`[embeddings] Error generating embedding for "${chunk.chunk_type}":`, message)
+      console.error(`[embeddings] Gemini failed for "${chunk.chunk_type}":`, message)
+    }
+
+    const row: Record<string, unknown> = {
+      item_id: chunk.item_id,
+      chunk_type: chunk.chunk_type,
+      step_number: chunk.step_number,
+      chunk_text: chunk.chunk_text,
+      embedding_openai: JSON.stringify(embeddingOpenai),
+    }
+
+    if (embeddingGemini) {
+      row.embedding_gemini = JSON.stringify(embeddingGemini)
+    }
+
+    return row
+  }))
+
+  // Only replace generated chunks. Manually linked client examples belong to
+  // the same item and must survive an item edit or reindex.
+  const { data: existingRows, error: existingError } = await supabase
+    .from('knowledge_embeddings')
+    .select('id')
+    .eq('item_id', itemId)
+    .in('chunk_type', GENERATED_CHUNK_TYPES)
+
+  if (existingError) {
+    throw new Error(`Failed to inspect existing embeddings: ${existingError.message}`)
+  }
+
+  const { data: insertedRows, error: insertError } = await supabase
+    .from('knowledge_embeddings')
+    .insert(rows)
+    .select('id')
+
+  if (insertError || !insertedRows?.length) {
+    throw new Error(`Failed to insert embeddings: ${insertError?.message || 'no rows returned'}`)
+  }
+
+  const existingIds = (existingRows || []).map(row => row.id)
+  if (existingIds.length > 0) {
+    const { error: deleteError } = await supabase
+      .from('knowledge_embeddings')
+      .delete()
+      .in('id', existingIds)
+
+    if (deleteError) {
+      // Best-effort rollback of the new rows prevents duplicate search hits.
+      await supabase
+        .from('knowledge_embeddings')
+        .delete()
+        .in('id', insertedRows.map(row => row.id))
+      throw new Error(`Failed to replace previous embeddings: ${deleteError.message}`)
     }
   }
 }

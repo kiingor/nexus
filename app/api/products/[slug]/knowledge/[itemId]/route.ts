@@ -50,7 +50,16 @@ export async function PUT(
   }
 
   // Regerar embeddings com conteúdo atualizado
-  syncItemEmbeddings(itemId).catch(console.error)
+  try {
+    await syncItemEmbeddings(itemId)
+  } catch (embeddingError: unknown) {
+    const message = embeddingError instanceof Error ? embeddingError.message : String(embeddingError)
+    console.error('[knowledge/update] embedding sync failed:', message)
+    return Response.json(
+      { error: `Item atualizado, mas a reindexação falhou: ${message}`, item: data },
+      { status: 502 }
+    )
+  }
 
   return Response.json(data)
 }

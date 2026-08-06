@@ -12,7 +12,7 @@ export interface CreateKnowledgeItemParams {
 }
 
 /**
- * Creates a knowledge item and triggers embedding sync in background.
+ * Creates a knowledge item and waits until it is searchable.
  * Validates that productSlug and moduleId match (module must belong to product).
  */
 export async function createKnowledgeItem(
@@ -61,10 +61,12 @@ export async function createKnowledgeItem(
 
   if (error) throw new Error(error.message)
 
-  // Fire-and-forget embedding sync
-  syncItemEmbeddings(data.id).catch((err) =>
-    console.error('[knowledge-items] embedding sync failed:', err)
-  )
+  try {
+    await syncItemEmbeddings(data.id)
+  } catch (embeddingError) {
+    await supabase.from('knowledge_items').delete().eq('id', data.id)
+    throw embeddingError
+  }
 
   return data as KnowledgeItem
 }

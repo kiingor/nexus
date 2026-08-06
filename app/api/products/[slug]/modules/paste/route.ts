@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { syncItemEmbeddings } from '@/lib/embeddings'
 
+export const maxDuration = 60
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
@@ -40,6 +42,7 @@ export async function POST(
   }
 
   const createdModules: string[] = []
+  const createdItemIds: string[] = []
 
   for (const mod of modulesToPaste) {
     // Check for existing module with same name
@@ -107,18 +110,42 @@ export async function POST(
         continue
       }
 
-      // Generate embeddings in background
       if (newItem) {
-        syncItemEmbeddings(newItem.id).catch(console.error)
+        createdItemIds.push(newItem.id)
       }
     }
 
     createdModules.push(mod.name)
   }
 
+  const embeddingFailures: Array<{ item_id: string; error: string }> = []
+  const concurrency = 3
+
+  for (let index = 0; index < createdItemIds.length; index += concurrency) {
+    const batch = createdItemIds.slice(index, index + concurrency)
+    const results = await Promise.allSettled(batch.map(itemId => syncItemEmbeddings(itemId)))
+    results.forEach((result, resultIndex) => {
+      if (result.status === 'rejected') {
+        const reason = result.reason instanceof Error ? result.reason.message : String(result.reason)
+        embeddingFailures.push({ item_id: batch[resultIndex], error: reason })
+      }
+    })
+  }
+
+  if (embeddingFailures.length > 0) {
+    console.error('[modules/paste] embedding sync failures:', embeddingFailures)
+    return Response.json({
+      error: 'Módulos criados, mas alguns itens não foram indexados.',
+      created: createdModules.length,
+      modules: createdModules,
+      embedding_failures: embeddingFailures,
+    }, { status: 502 })
+  }
+
   return Response.json({
     success: true,
     created: createdModules.length,
     modules: createdModules,
+    indexed_items: createdItemIds.length,
   })
 }

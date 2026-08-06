@@ -10,7 +10,7 @@ export function registerCreateKnowledgeItem(server: McpServer) {
     {
       title: 'Create knowledge item',
       description:
-        'Cria um item de conhecimento (instrução ou erro) em um módulo de um produto. Dispara geração de embeddings em background. Use para alimentar a base a partir de tickets resolvidos ou novas FAQs.',
+        'Cria e indexa um item de conhecimento (instrução ou erro) em um módulo de um produto. Use para alimentar a base a partir de tickets resolvidos ou novas FAQs.',
       inputSchema: {
         product_slug: z.string().describe('Slug do produto (use list_products)'),
         module_id: z.string().uuid().describe('UUID do módulo (use list_modules)'),
@@ -43,7 +43,7 @@ export function registerCreateKnowledgeItem(server: McpServer) {
                   module_id: item.module_id,
                   title: item.title,
                   type: item.type,
-                  embedding_sync: 'queued',
+                  embedding_sync: 'complete',
                 },
                 null,
                 2

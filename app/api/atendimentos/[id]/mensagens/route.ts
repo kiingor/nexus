@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { parseConversaSincronizada } from '@/lib/conversa-sincronizada'
 import {
   findClienteId,
   getMensagensClient,
@@ -62,23 +63,39 @@ export async function GET(
 ) {
   const { id } = await params
 
-  if (!getMensagensClient()) {
-    return Response.json(
-      { error: 'Banco de mensagens não configurado', mensagens: [] },
-      { status: 503 }
-    )
-  }
-
   const supabase = createServerClient()
   const { data: atendimento, error } = await supabase
     .from('atendimentos')
-    .select('id, phone, cnpj, data_hora_chegada, data_hora_saida, criado_em')
+    .select('id, phone, cnpj, data_hora_chegada, data_hora_saida, criado_em, hub_cliente_id, hub_ticket_id, conversa_json, conversa_sincronizada_em, oc_vinculada')
     .eq('id', id)
     .maybeSingle()
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
   if (!atendimento) {
     return Response.json({ error: 'Não encontrado' }, { status: 404 })
+  }
+
+  // Novos atendimentos ja carregam uma copia exata da conversa no Nexus.
+  // Essa fonte e deterministica e nao depende mais do segundo Supabase.
+  const sincronizadas = parseConversaSincronizada(atendimento.conversa_json)
+  if (sincronizadas.length > 0) {
+    return Response.json({
+      mensagens: sincronizadas,
+      cliente_id: atendimento.hub_cliente_id,
+      ticket_id: atendimento.hub_ticket_id,
+      oc_vinculada: atendimento.oc_vinculada,
+      conversa_sincronizada_em: atendimento.conversa_sincronizada_em,
+      origem: 'atendimentos.conversa_json',
+      fallback: null,
+    })
+  }
+
+  // Registros antigos continuam usando a busca historica como fallback.
+  if (!getMensagensClient()) {
+    return Response.json(
+      { error: 'Banco de mensagens não configurado', mensagens: [] },
+      { status: 503 }
+    )
   }
 
   const semJanela = request.nextUrl.searchParams.get('janela') === 'off'
@@ -145,6 +162,7 @@ export async function GET(
       mensagens,
       cliente_id: clienteId,
       janela: from && to ? { from, to } : null,
+      origem: 'mensagens',
       fallback,
     })
   } catch (e) {

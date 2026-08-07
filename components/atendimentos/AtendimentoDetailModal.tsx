@@ -113,6 +113,15 @@ export function AtendimentoDetailModal({
               record={detail}
               onChanged={onValidationSaved}
             />
+            {['resolvida_ia', 'resolvido_parcialmente'].includes(String(detail.status)) && detail.oc_vinculada && (
+              <span
+                title="Número da ocorrência vinculada"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-cyan-500/10 border-cyan-500/30 text-cyan-300"
+              >
+                <FileText size={12} />
+                Ocorrência #{detail.oc_vinculada}
+              </span>
+            )}
             {detail.validado && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-green-500/15 border-green-500/40 text-green-300">
                 <ShieldCheck size={12} />
@@ -897,6 +906,7 @@ function useMensagens(atendimentoId: number | null) {
   const [messages, setMessages] = useState<ChatMsg[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [source, setSource] = useState<string | null>(null)
 
   useEffect(() => {
     // Sem id (atendimento de ligação) não há o que buscar — o resultado é
@@ -908,6 +918,7 @@ function useMensagens(atendimentoId: number | null) {
     async function carregar(id: number) {
       setLoading(true)
       setErro(null)
+      setSource(null)
       try {
         const r = await fetch(`/api/atendimentos/${id}/mensagens`)
         const json = await r.json().catch(() => ({}))
@@ -920,6 +931,7 @@ function useMensagens(atendimentoId: number | null) {
         }
 
         const rows: MensagemRow[] = json?.mensagens ?? []
+        setSource(typeof json?.origem === 'string' ? json.origem : null)
         setMessages(
           rows.length === 0
             ? null
@@ -948,8 +960,10 @@ function useMensagens(atendimentoId: number | null) {
     }
   }, [atendimentoId])
 
-  if (atendimentoId == null) return { messages: null, loading: false, erro: null }
-  return { messages, loading, erro }
+  if (atendimentoId == null) {
+    return { messages: null, loading: false, erro: null, source: null }
+  }
+  return { messages, loading, erro, source }
 }
 
 // O `tipo` da tabela vem como 'imagem' pra qualquer anexo — quem diz o
@@ -1187,7 +1201,9 @@ function TranscricaoBlock({
             {isChat
               ? remote.loading
                 ? 'Carregando conversa…'
-                : `Conversa · ${messages.length} mensagens`
+                : remote.source === 'atendimentos.conversa_json'
+                  ? `Conversa sincronizada · ${messages.length} mensagens`
+                  : `Conversa · ${messages.length} mensagens`
               : hasFormatada
                 ? 'Formatada'
                 : 'Original (Supabase)'}

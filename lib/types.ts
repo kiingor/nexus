@@ -264,6 +264,12 @@ export interface AtendimentoRecord {
   // Sub-categoria do atendimento (preenchida pelo classificador AI do n8n).
   // Ex: 'erro_337', 'boleto_mensalidade', 'suporte_geral', etc.
   tipo_atendimento: string | null
+  // Conversa copiada do Hub para o banco Nexus no encerramento.
+  hub_cliente_id?: string | null
+  hub_ticket_id?: string | null
+  conversa_json?: unknown[] | null
+  conversa_sincronizada_em?: string | null
+  oc_vinculada?: string | null
 }
 
 export interface AvaliacaoAtendimentoRecord {

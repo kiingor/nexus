@@ -1,3 +1,6 @@
+import { classifyMotivo } from '@/lib/atendimentos'
+import { motivoCanonico, TIPO_ATENDIMENTO_LABELS } from '@/lib/tipos-atendimento'
+
 export type EfetividadeSourceRow = {
   id: number
   status: string | null
@@ -20,6 +23,7 @@ export type EfetividadeSourceRow = {
   validado?: boolean | null
   validacao_transf?: string | null
   id_ligacao?: string | null
+  transcricao?: string | null
 }
 
 export type EfetividadeFiltros = {
@@ -34,6 +38,7 @@ export type EfetividadeFiltros = {
   comProblema?: boolean
   validados?: boolean
   search?: string | null
+  mesmoMotivo?: boolean
 }
 
 export type EfetividadeCaso = {
@@ -225,6 +230,29 @@ function matchesReturnFilters(row: DatedRow, filters: EfetividadeFiltros): boole
   return true
 }
 
+function motivoKey(row: DatedRow): string | null {
+  const tipo = String(row.tipo_atendimento ?? '').trim()
+  if (tipo) {
+    const label = TIPO_ATENDIMENTO_LABELS[tipo] ?? tipo
+    return normalized(motivoCanonico(label))
+  }
+
+  const fallback = motivoCanonico(
+    classifyMotivo({
+      problema_relatado: row.problema_relatado,
+      transcricao: row.transcricao ?? null,
+      problema_extraido: row.problema_extraido as Parameters<typeof classifyMotivo>[0]['problema_extraido'],
+    })
+  )
+  return fallback === 'Suporte geral' ? null : normalized(fallback)
+}
+
+function hasSameMotive(resolution: DatedRow, transfer: DatedRow): boolean {
+  const resolutionMotive = motivoKey(resolution)
+  const transferMotive = motivoKey(transfer)
+  return resolutionMotive !== null && resolutionMotive === transferMotive
+}
+
 /**
  * Mede a efetividade por cliente.
  *
@@ -272,7 +300,9 @@ export function calcularEfetividade(
     for (const transfer of transfers) {
       if (!matchesReturnFilters(transfer, filters)) continue
       const resolution = latestResolutionBeforeOnSameDay(resolutions, transfer.dataMs)
-      if (resolution) pairs.push({ resolution, transfer })
+      if (resolution && (!filters.mesmoMotivo || hasSameMotive(resolution, transfer))) {
+        pairs.push({ resolution, transfer })
+      }
     }
 
     if (pairs.length === 0) continue

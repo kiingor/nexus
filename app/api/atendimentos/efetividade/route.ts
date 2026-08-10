@@ -28,6 +28,7 @@ const SELECT_COLS = [
   'validado',
   'validacao_transf',
   'id_ligacao',
+  'transcricao',
 ].join(',')
 
 export async function GET(request: NextRequest) {
@@ -44,6 +45,7 @@ export async function GET(request: NextRequest) {
   const comProblema = searchParams.get('com_problema') === 'true'
   const validados = searchParams.get('validados') === 'true'
   const search = (searchParams.get('search') || '').trim()
+  const mesmoMotivo = searchParams.get('mesmo_motivo') === 'true'
 
   const rows: EfetividadeSourceRow[] = []
   let offset = 0
@@ -103,6 +105,7 @@ export async function GET(request: NextRequest) {
     comProblema,
     validados,
     search,
+    mesmoMotivo,
   })
   const totalCasos = result.casos.length
 

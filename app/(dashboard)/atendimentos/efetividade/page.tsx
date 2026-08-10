@@ -13,13 +13,16 @@ import {
   Users,
 } from 'lucide-react'
 import { AtendimentosTabs } from '@/components/atendimentos/AtendimentosTabs'
+import { AtendimentoDetailModal } from '@/components/atendimentos/AtendimentoDetailModal'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { Spinner } from '@/components/ui/Spinner'
 import type { EfetividadeCaso, EfetividadeResultado } from '@/lib/efetividade'
 import { TIPO_ATENDIMENTO_LABELS } from '@/lib/tipos-atendimento'
+import type { AtendimentoRecord, AvaliacaoAtendimentoRecord } from '@/lib/types'
 
 type PeriodPreset = 'todos' | 'hoje' | 'ontem' | '3d' | '7d' | '15d' | 'mes' | 'custom'
 type RetornoStatusFilter = 'all' | 'transferida' | 'resolvido_parcialmente'
+type MotivoRetornoFilter = 'geral' | 'mesmo_motivo'
 type DestinoFilter = 'all' | 'servicedesk' | 'financeiro' | 'comercial' | 'ouvidoria' | 'parametrizacao'
 type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
 type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
@@ -173,6 +176,7 @@ export default function EfetividadePage() {
   const [fromTime, setFromTime] = useState('')
   const [toTime, setToTime] = useState('')
   const [retornoStatusFilter, setRetornoStatusFilter] = useState<RetornoStatusFilter>('all')
+  const [motivoRetornoFilter, setMotivoRetornoFilter] = useState<MotivoRetornoFilter>('geral')
   const [destinoFilter, setDestinoFilter] = useState<DestinoFilter>('all')
   const [tipoContatoFilter, setTipoContatoFilter] = useState<TipoContatoFilter>('all')
   const [sentimentoFilter, setSentimentoFilter] = useState<SentimentoFilter>('all')
@@ -188,6 +192,11 @@ export default function EfetividadePage() {
   const [search, setSearch] = useState('')
   const [searchDebounced, setSearchDebounced] = useState('')
   const [page, setPage] = useState(1)
+  const [selected, setSelected] = useState<AtendimentoRecord | null>(null)
+  const [avaliacoes, setAvaliacoes] = useState<AvaliacaoAtendimentoRecord[]>([])
+  const [loadingAvaliacoes, setLoadingAvaliacoes] = useState(false)
+  const [openingId, setOpeningId] = useState<number | null>(null)
+  const [detailError, setDetailError] = useState('')
 
   const handlePreset = useCallback((preset: PeriodPreset) => {
     setPeriodPreset(preset)
@@ -224,6 +233,7 @@ export default function EfetividadePage() {
       if (range.from) params.set('from', range.from)
       if (range.to) params.set('to', range.to)
       if (retornoStatusFilter !== 'all') params.set('status', retornoStatusFilter)
+      if (motivoRetornoFilter === 'mesmo_motivo') params.set('mesmo_motivo', 'true')
       if (destinoFilter !== 'all') params.set('destino', destinoFilter)
       if (tipoContatoFilter !== 'all') params.set('tipo_contato', tipoContatoFilter)
       if (sentimentoFilter !== 'all') params.set('sentimento', sentimentoFilter)
@@ -251,6 +261,7 @@ export default function EfetividadePage() {
     fromTime,
     toTime,
     retornoStatusFilter,
+    motivoRetornoFilter,
     destinoFilter,
     tipoContatoFilter,
     sentimentoFilter,
@@ -268,6 +279,7 @@ export default function EfetividadePage() {
   useEffect(() => setPage(1), [
     searchDebounced,
     retornoStatusFilter,
+    motivoRetornoFilter,
     destinoFilter,
     tipoContatoFilter,
     sentimentoFilter,
@@ -290,6 +302,29 @@ export default function EfetividadePage() {
       setRefreshing(false)
     }
   }, [load])
+
+  const openDetail = useCallback(async (id: number) => {
+    setOpeningId(id)
+    setDetailError('')
+    setAvaliacoes([])
+    setLoadingAvaliacoes(true)
+    try {
+      const response = await fetch(`/api/atendimentos/${id}`)
+      const json = await response.json()
+      if (!response.ok || !json?.atendimento) {
+        throw new Error(json?.error || 'Não foi possível abrir o atendimento.')
+      }
+      setSelected(json.atendimento as AtendimentoRecord)
+      setAvaliacoes(Array.isArray(json.avaliacoes) ? json.avaliacoes : [])
+    } catch (cause) {
+      setDetailError(
+        cause instanceof Error ? cause.message : 'Não foi possível abrir o atendimento.'
+      )
+    } finally {
+      setOpeningId(null)
+      setLoadingAvaliacoes(false)
+    }
+  }, [])
 
   const totalPages = Math.max(1, Math.ceil(data.casos.length / PAGE_SIZE))
   const visibleCases = data.casos.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -398,6 +433,16 @@ export default function EfetividadePage() {
           <option value="all">Todos status de retorno</option>
           <option value="transferida">Transferida</option>
           <option value="resolvido_parcialmente">Resolvido parcialmente</option>
+        </select>
+
+        <select
+          value={motivoRetornoFilter}
+          onChange={(event) => setMotivoRetornoFilter(event.target.value as MotivoRetornoFilter)}
+          title="Comparação do motivo entre a resolução e o retorno"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base"
+        >
+          <option value="geral">Todos os retornos</option>
+          <option value="mesmo_motivo">Somente mesmo motivo</option>
         </select>
 
         <select
@@ -514,6 +559,12 @@ export default function EfetividadePage() {
         </label>
       </section>
 
+      {detailError && (
+        <div className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {detailError}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Spinner size="md" />
@@ -616,30 +667,46 @@ export default function EfetividadePage() {
                             <p className="mt-1 text-xs font-mono text-muted">{formatIdentifier(caso)}</p>
                           </td>
                           <td className="px-5 py-4 max-w-72">
-                            <div className="flex items-center gap-2">
-                              <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">
-                                #{caso.resolvida.id}
+                            <button
+                              type="button"
+                              onClick={() => void openDetail(caso.resolvida.id)}
+                              disabled={openingId !== null}
+                              title="Abrir atendimento resolvido e visualizar a conversa"
+                              className="group w-full rounded-xl p-2 -m-2 text-left transition-colors hover:bg-emerald-500/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 disabled:opacity-60 cursor-pointer disabled:cursor-wait"
+                            >
+                              <span className="flex items-center gap-2">
+                                <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300 group-hover:bg-emerald-500/20 group-hover:underline">
+                                  {openingId === caso.resolvida.id ? 'Abrindo…' : `#${caso.resolvida.id}`}
+                                </span>
+                                <span className="text-xs text-muted">{formatDateTime(caso.resolvida.data)}</span>
                               </span>
-                              <span className="text-xs text-muted">{formatDateTime(caso.resolvida.data)}</span>
-                            </div>
-                            <p className="mt-2 text-xs leading-5 text-secondary line-clamp-2" title={caso.resolvida.problema || ''}>
-                              {caso.resolvida.problema || 'Motivo não informado'}
-                            </p>
+                              <span className="mt-2 block text-xs leading-5 text-secondary line-clamp-2" title={caso.resolvida.problema || ''}>
+                                {caso.resolvida.problema || 'Motivo não informado'}
+                              </span>
+                            </button>
                           </td>
                           <td className="px-2 py-5 text-muted">
                             <ArrowRight size={16} />
                           </td>
                           <td className="px-5 py-4 max-w-72">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
-                                #{caso.transferencia.id}
+                            <button
+                              type="button"
+                              onClick={() => void openDetail(caso.transferencia.id)}
+                              disabled={openingId !== null}
+                              title="Abrir atendimento de retorno e visualizar a conversa"
+                              className="group w-full rounded-xl p-2 -m-2 text-left transition-colors hover:bg-amber-500/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 disabled:opacity-60 cursor-pointer disabled:cursor-wait"
+                            >
+                              <span className="flex items-center gap-2 flex-wrap">
+                                <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-300 group-hover:bg-amber-500/20 group-hover:underline">
+                                  {openingId === caso.transferencia.id ? 'Abrindo…' : `#${caso.transferencia.id}`}
+                                </span>
+                                <span className="text-xs text-muted">{formatDateTime(caso.transferencia.data)}</span>
                               </span>
-                              <span className="text-xs text-muted">{formatDateTime(caso.transferencia.data)}</span>
-                            </div>
-                            <p className="mt-2 text-xs text-orange-300">{destinoLabel(caso.transferencia.destino)}</p>
-                            <p className="mt-1 text-xs leading-5 text-secondary line-clamp-2" title={caso.transferencia.problema || ''}>
-                              {caso.transferencia.problema || 'Motivo não informado'}
-                            </p>
+                              <span className="mt-2 block text-xs text-orange-300">{destinoLabel(caso.transferencia.destino)}</span>
+                              <span className="mt-1 block text-xs leading-5 text-secondary line-clamp-2" title={caso.transferencia.problema || ''}>
+                                {caso.transferencia.problema || 'Motivo não informado'}
+                              </span>
+                            </button>
                           </td>
                           <td className="px-5 py-4">
                             <span className="inline-flex items-center gap-1.5 rounded-lg border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 text-orange-300 whitespace-nowrap">
@@ -701,6 +768,18 @@ export default function EfetividadePage() {
           )}
         </div>
       )}
+
+      <AtendimentoDetailModal
+        record={selected}
+        open={selected !== null}
+        onClose={() => setSelected(null)}
+        avaliacoes={avaliacoes}
+        loadingAvaliacoes={loadingAvaliacoes}
+        onValidationSaved={(updated) => {
+          setSelected(updated)
+          void load(true)
+        }}
+      />
     </div>
   )
 }

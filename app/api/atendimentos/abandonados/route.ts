@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import {
   getMensagensClient,
   listClientesByIds,
+  listEncerramentosByClientes,
   listMensagensNoPeriodo,
   onlyDigits,
 } from '@/lib/supabase/mensagens'
@@ -67,8 +68,36 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // 1. Todas as mensagens do período, agrupadas por cliente.
+    // 1. Todas as mensagens do período. Antes de agrupar, remove segmentos
+    // que já possuem ticket encerrado: só mensagens posteriores ao último
+    // encerramento ainda podem ser consideradas abandonadas.
     const { rows, truncated } = await listMensagensNoPeriodo(from, to)
+
+    const encerramentos = await listEncerramentosByClientes(
+      rows.map((row) => row.cliente_id),
+      {
+        from: new Date(fromMs - FOLGA_MS).toISOString(),
+        to: new Date(toMs + FOLGA_MS).toISOString(),
+      }
+    )
+
+    const clientesComMensagemFechada = new Set<string>()
+    const rowsAbertas = rows.filter((row) => {
+      const enviadoEm = Date.parse(row.enviado_em)
+      if (!Number.isFinite(enviadoEm)) return false
+      const fechamentos = encerramentos.get(row.cliente_id) ?? []
+      const ultimoFechamento = fechamentos.at(-1)
+      if (ultimoFechamento !== undefined && enviadoEm <= ultimoFechamento) {
+        clientesComMensagemFechada.add(row.cliente_id)
+        return false
+      }
+      return true
+    })
+
+    const clientesAindaAbertos = new Set(rowsAbertas.map((row) => row.cliente_id))
+    const encerradasIgnoradas = [...clientesComMensagemFechada].filter(
+      (clienteId) => !clientesAindaAbertos.has(clienteId)
+    ).length
 
     type Conversa = {
       inicio: number
@@ -78,7 +107,7 @@ export async function GET(request: NextRequest) {
     }
     const porCliente = new Map<string, Conversa>()
 
-    for (const m of rows) {
+    for (const m of rowsAbertas) {
       const t = Date.parse(m.enviado_em)
       if (!Number.isFinite(t)) continue
       const atual = porCliente.get(m.cliente_id)
@@ -226,6 +255,7 @@ export async function GET(request: NextRequest) {
         parados: parados.length,
         atendimentos: porId.size,
         abandonados: abandonados.length,
+        encerradas_ignoradas: encerradasIgnoradas,
       },
       periodo: { from, to },
       truncated,

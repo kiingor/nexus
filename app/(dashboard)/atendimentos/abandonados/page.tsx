@@ -57,7 +57,13 @@ type Aviso = {
 
 type Resposta = {
   abandonados: Abandonado[]
-  stats: { conversas: number; parados: number; atendimentos: number; abandonados: number }
+  stats: {
+    conversas: number
+    parados: number
+    atendimentos: number
+    abandonados: number
+    encerradas_ignoradas?: number
+  }
   truncated: boolean
   error?: string
 }
@@ -463,6 +469,13 @@ export default function AbandonadosPage() {
               </pre>
             </details>
           )}
+        </div>
+      )}
+
+      {(stats?.encerradas_ignoradas ?? 0) > 0 && (
+        <div className="mb-6 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          Limpeza automática: {stats?.encerradas_ignoradas} conversa(s) com ocorrência já
+          encerrada foram retiradas desta lista.
         </div>
       )}
 

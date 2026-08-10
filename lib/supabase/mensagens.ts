@@ -201,6 +201,48 @@ export async function listEncerramentosTicket(
     .filter((n) => Number.isFinite(n))
 }
 
+// Versão em lote usada pela tela de Abandonados. Evita uma consulta por
+// cliente e devolve os encerramentos ordenados por cliente. Com isso a tela
+// consegue descartar segmentos que já viraram ticket encerrado e considerar
+// apenas mensagens novas enviadas depois do último fechamento.
+export async function listEncerramentosByClientes(
+  clienteIds: string[],
+  opts: { from?: string | null; to?: string | null } = {}
+): Promise<Map<string, number[]>> {
+  const supabase = getMensagensClient()
+  const result = new Map<string, number[]>()
+  if (!supabase || clienteIds.length === 0) return result
+
+  const ids = [...new Set(clienteIds.filter(Boolean))]
+  const LOTE = 80
+
+  for (let i = 0; i < ids.length; i += LOTE) {
+    let query = supabase
+      .from('tickets')
+      .select('cliente_id, encerrado_em')
+      .in('cliente_id', ids.slice(i, i + LOTE))
+      .eq('status', 'encerrado')
+      .not('encerrado_em', 'is', null)
+
+    if (opts.from) query = query.gte('encerrado_em', opts.from)
+    if (opts.to) query = query.lte('encerrado_em', opts.to)
+
+    const { data, error } = await query.order('encerrado_em', { ascending: true })
+    if (error) throw new Error(error.message)
+
+    for (const row of data ?? []) {
+      const clienteId = String(row.cliente_id ?? '')
+      const encerradoEm = Date.parse(String(row.encerrado_em ?? ''))
+      if (!clienteId || !Number.isFinite(encerradoEm)) continue
+      const list = result.get(clienteId)
+      if (list) list.push(encerradoEm)
+      else result.set(clienteId, [encerradoEm])
+    }
+  }
+
+  return result
+}
+
 // Mensagens de um ticket, na ordem cronológica. Usa o índice
 // idx_mensagens_ticket_enviado (ticket_id, enviado_em desc).
 export async function listMensagensByTicket(

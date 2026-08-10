@@ -5,6 +5,7 @@ import {
   ArrowRight,
   CalendarDays,
   Clock,
+  Filter,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -15,8 +16,13 @@ import { AtendimentosTabs } from '@/components/atendimentos/AtendimentosTabs'
 import { Breadcrumb } from '@/components/ui/Breadcrumb'
 import { Spinner } from '@/components/ui/Spinner'
 import type { EfetividadeCaso, EfetividadeResultado } from '@/lib/efetividade'
+import { TIPO_ATENDIMENTO_LABELS } from '@/lib/tipos-atendimento'
 
-type PeriodPreset = '7d' | '30d' | '90d' | 'todos' | 'custom'
+type PeriodPreset = 'todos' | 'hoje' | 'ontem' | '3d' | '7d' | '15d' | 'mes' | 'custom'
+type RetornoStatusFilter = 'all' | 'transferida' | 'resolvido_parcialmente'
+type DestinoFilter = 'all' | 'servicedesk' | 'financeiro' | 'comercial' | 'ouvidoria' | 'parametrizacao'
+type TipoContatoFilter = 'all' | 'ligacao' | 'chat'
+type SentimentoFilter = 'all' | 'positivo' | 'neutro' | 'negativo'
 type ApiResponse = EfetividadeResultado & {
   totalCasos: number
   truncated: boolean
@@ -48,21 +54,41 @@ function toLocalDateStr(date: Date): string {
 }
 
 function resolvePreset(preset: PeriodPreset): { from: string; to: string } {
+  if (preset === 'custom') return { from: '', to: '' }
   if (preset === 'todos') return { from: '', to: '' }
   const today = new Date()
   const to = toLocalDateStr(today)
-  const days = preset === '7d' ? 6 : preset === '90d' ? 89 : 29
+  if (preset === 'hoje') return { from: to, to }
+  if (preset === 'ontem') {
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+    const day = toLocalDateStr(yesterday)
+    return { from: day, to: day }
+  }
+  const days = preset === '3d' ? 2 : preset === '7d' ? 6 : preset === '15d' ? 14 : 29
   const start = new Date(today)
   start.setDate(start.getDate() - days)
   return { from: toLocalDateStr(start), to }
 }
 
-const INITIAL_RANGE = resolvePreset('30d')
+const INITIAL_RANGE = resolvePreset('7d')
 
-function buildIsoRange(fromDay: string, toDay: string): { from?: string; to?: string } {
+function buildIsoRange(
+  fromDay: string,
+  toDay: string,
+  useTime: boolean,
+  fromTime: string,
+  toTime: string
+): { from?: string; to?: string } {
   if (!fromDay) return {}
   const start = !toDay || fromDay <= toDay ? fromDay : toDay
   const end = !toDay || fromDay <= toDay ? toDay || fromDay : fromDay
+  if (useTime) {
+    return {
+      from: `${start}T${fromTime || '00:00'}:00-03:00`,
+      to: `${end}T${toTime || '23:59'}:${toTime ? '00' : '59.999'}-03:00`,
+    }
+  }
   return {
     from: `${start}T00:00:00-03:00`,
     to: `${end}T23:59:59.999-03:00`,
@@ -140,14 +166,27 @@ function KpiCard({
 }
 
 export default function EfetividadePage() {
-  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('30d')
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('7d')
   const [fromDate, setFromDate] = useState(INITIAL_RANGE.from)
   const [toDate, setToDate] = useState(INITIAL_RANGE.to)
+  const [timeFilterEnabled, setTimeFilterEnabled] = useState(false)
+  const [fromTime, setFromTime] = useState('')
+  const [toTime, setToTime] = useState('')
+  const [retornoStatusFilter, setRetornoStatusFilter] = useState<RetornoStatusFilter>('all')
+  const [destinoFilter, setDestinoFilter] = useState<DestinoFilter>('all')
+  const [tipoContatoFilter, setTipoContatoFilter] = useState<TipoContatoFilter>('all')
+  const [sentimentoFilter, setSentimentoFilter] = useState<SentimentoFilter>('all')
+  const [tipoAtendimentoFilter, setTipoAtendimentoFilter] = useState('')
+  const [pdvFilter, setPdvFilter] = useState('')
+  const [pdvOptions, setPdvOptions] = useState<string[]>([])
+  const [comProblema, setComProblema] = useState(false)
+  const [soValidados, setSoValidados] = useState(false)
   const [data, setData] = useState<ApiResponse>(EMPTY)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
+  const [searchDebounced, setSearchDebounced] = useState('')
   const [page, setPage] = useState(1)
 
   const handlePreset = useCallback((preset: PeriodPreset) => {
@@ -156,17 +195,43 @@ export default function EfetividadePage() {
       const range = resolvePreset(preset)
       setFromDate(range.from)
       setToDate(range.to)
+      setTimeFilterEnabled(false)
+      setFromTime('')
+      setToTime('')
     }
   }, [])
+
+  useEffect(() => {
+    fetch('/api/atendimentos/pdvs')
+      .then((response) => response.json())
+      .then((json) => {
+        if (Array.isArray(json?.pdvs)) setPdvOptions(json.pdvs)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setSearchDebounced(search.trim()), 350)
+    return () => clearTimeout(timeout)
+  }, [search])
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     setError('')
     try {
       const params = new URLSearchParams()
-      const range = buildIsoRange(fromDate, toDate)
+      const range = buildIsoRange(fromDate, toDate, timeFilterEnabled, fromTime, toTime)
       if (range.from) params.set('from', range.from)
       if (range.to) params.set('to', range.to)
+      if (retornoStatusFilter !== 'all') params.set('status', retornoStatusFilter)
+      if (destinoFilter !== 'all') params.set('destino', destinoFilter)
+      if (tipoContatoFilter !== 'all') params.set('tipo_contato', tipoContatoFilter)
+      if (sentimentoFilter !== 'all') params.set('sentimento', sentimentoFilter)
+      if (tipoAtendimentoFilter) params.set('tipo_atendimento', tipoAtendimentoFilter)
+      if (pdvFilter) params.set('pdv', pdvFilter)
+      if (comProblema) params.set('com_problema', 'true')
+      if (soValidados) params.set('validados', 'true')
+      if (searchDebounced) params.set('search', searchDebounced)
       const response = await fetch(`/api/atendimentos/efetividade?${params.toString()}`)
       const json = (await response.json()) as ApiResponse | { error: string }
       if (!response.ok || 'error' in json) {
@@ -179,13 +244,43 @@ export default function EfetividadePage() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [fromDate, toDate])
+  }, [
+    fromDate,
+    toDate,
+    timeFilterEnabled,
+    fromTime,
+    toTime,
+    retornoStatusFilter,
+    destinoFilter,
+    tipoContatoFilter,
+    sentimentoFilter,
+    tipoAtendimentoFilter,
+    pdvFilter,
+    comProblema,
+    soValidados,
+    searchDebounced,
+  ])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  useEffect(() => setPage(1), [search, data])
+  useEffect(() => setPage(1), [
+    searchDebounced,
+    retornoStatusFilter,
+    destinoFilter,
+    tipoContatoFilter,
+    sentimentoFilter,
+    tipoAtendimentoFilter,
+    pdvFilter,
+    comProblema,
+    soValidados,
+    fromDate,
+    toDate,
+    fromTime,
+    toTime,
+    timeFilterEnabled,
+  ])
 
   const refresh = useCallback(async () => {
     setRefreshing(true)
@@ -196,29 +291,8 @@ export default function EfetividadePage() {
     }
   }, [load])
 
-  const filteredCases = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase('pt-BR')
-    if (!term) return data.casos
-    const digits = term.replace(/\D/g, '')
-    return data.casos.filter((caso) => {
-      const haystack = [
-        caso.clienteNome,
-        caso.cnpj,
-        caso.telefone,
-        caso.identificador,
-        caso.resolvida.problema,
-        caso.transferencia.problema,
-        caso.transferencia.destino,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLocaleLowerCase('pt-BR')
-      return haystack.includes(term) || (digits.length >= 4 && haystack.replace(/\D/g, '').includes(digits))
-    })
-  }, [data.casos, search])
-
-  const totalPages = Math.max(1, Math.ceil(filteredCases.length / PAGE_SIZE))
-  const visibleCases = filteredCases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(data.casos.length / PAGE_SIZE))
+  const visibleCases = data.casos.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const periodLabel = useMemo(() => {
     if (!fromDate) return 'Todo o período'
@@ -262,11 +336,12 @@ export default function EfetividadePage() {
               Efetividade das resoluções
             </div>
             <h2 className="mt-2 text-xl font-display font-bold text-primary">
-              Quem voltou depois de uma ocorrência resolvida e precisou ser transferido
+              Quem voltou no mesmo dia após uma ocorrência resolvida e precisou ser transferido
             </h2>
             <p className="mt-2 text-sm leading-6 text-secondary">
               A taxa considera clientes identificáveis com ocorrência resolvida pela IA no período.
-              O retorno pode acontecer depois do fim do período selecionado.
+              Só conta como retorno quando a transferência ocorre depois da resolução e antes da
+              meia-noite, no horário de Brasília.
             </p>
           </div>
 
@@ -277,10 +352,13 @@ export default function EfetividadePage() {
               onChange={(event) => handlePreset(event.target.value as PeriodPreset)}
               className="bg-base border border-orange-500/30 rounded-xl px-3 py-2 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base"
             >
-              <option value="7d">Últimos 7 dias</option>
-              <option value="30d">Últimos 30 dias</option>
-              <option value="90d">Últimos 90 dias</option>
               <option value="todos">Todo o período</option>
+              <option value="hoje">Hoje</option>
+              <option value="ontem">Ontem</option>
+              <option value="3d">Últimos 3 dias</option>
+              <option value="7d">Últimos 7 dias</option>
+              <option value="15d">Últimos 15 dias</option>
+              <option value="mes">Último mês</option>
               <option value="custom">Personalizado</option>
             </select>
             {periodPreset === 'custom' && (
@@ -305,6 +383,137 @@ export default function EfetividadePage() {
         </div>
       </section>
 
+      <section className="glass p-4 mb-5 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 text-muted text-xs uppercase tracking-wider">
+          <Filter size={14} />
+          Filtros
+        </div>
+
+        <select
+          value={retornoStatusFilter}
+          onChange={(event) => setRetornoStatusFilter(event.target.value as RetornoStatusFilter)}
+          title="Status do retorno"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base"
+        >
+          <option value="all">Todos status de retorno</option>
+          <option value="transferida">Transferida</option>
+          <option value="resolvido_parcialmente">Resolvido parcialmente</option>
+        </select>
+
+        <select
+          value={destinoFilter}
+          onChange={(event) => setDestinoFilter(event.target.value as DestinoFilter)}
+          title="Destino do retorno"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base"
+        >
+          <option value="all">Todos destinos de retorno</option>
+          <option value="servicedesk">ServiceDesk</option>
+          <option value="financeiro">Financeiro</option>
+          <option value="comercial">Comercial</option>
+          <option value="ouvidoria">Ouvidoria</option>
+          <option value="parametrizacao">Parametrização</option>
+        </select>
+
+        <select
+          value={tipoContatoFilter}
+          onChange={(event) => setTipoContatoFilter(event.target.value as TipoContatoFilter)}
+          title="Tipo de contato da resolução"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base"
+        >
+          <option value="all">Todos tipos</option>
+          <option value="ligacao">Ligação</option>
+          <option value="chat">Chat</option>
+        </select>
+
+        <select
+          value={sentimentoFilter}
+          onChange={(event) => setSentimentoFilter(event.target.value as SentimentoFilter)}
+          title="Sentimento da resolução"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base"
+        >
+          <option value="all">Todos sentimentos</option>
+          <option value="positivo">Positivo</option>
+          <option value="neutro">Neutro</option>
+          <option value="negativo">Negativo</option>
+        </select>
+
+        <select
+          value={tipoAtendimentoFilter}
+          onChange={(event) => setTipoAtendimentoFilter(event.target.value)}
+          title="Tipo de atendimento da resolução"
+          className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base"
+        >
+          <option value="">Todos os tipos de atendimento</option>
+          {Object.entries(TIPO_ATENDIMENTO_LABELS)
+            .sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'))
+            .map(([code, label]) => (
+              <option key={code} value={code}>{label}</option>
+            ))}
+        </select>
+
+        {pdvOptions.length > 0 && (
+          <select
+            value={pdvFilter}
+            onChange={(event) => setPdvFilter(event.target.value)}
+            title="PDV da resolução"
+            className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base"
+          >
+            <option value="">Todos PDVs</option>
+            {pdvOptions.map((pdv) => <option key={pdv} value={pdv}>{pdv}</option>)}
+          </select>
+        )}
+
+        {periodPreset !== 'todos' && (
+          <>
+            <label className="flex items-center gap-2 text-sm text-secondary cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={timeFilterEnabled}
+                onChange={(event) => setTimeFilterEnabled(event.target.checked)}
+                className="accent-orange-500"
+              />
+              Filtrar horário
+            </label>
+            <input
+              type="time"
+              value={fromTime}
+              onChange={(event) => setFromTime(event.target.value)}
+              disabled={!timeFilterEnabled}
+              title="Hora inicial"
+              className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none disabled:opacity-40 [color-scheme:dark]"
+            />
+            <input
+              type="time"
+              value={toTime}
+              onChange={(event) => setToTime(event.target.value)}
+              disabled={!timeFilterEnabled}
+              title="Hora final"
+              className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none disabled:opacity-40 [color-scheme:dark]"
+            />
+          </>
+        )}
+
+        <label className="flex items-center gap-2 text-sm text-secondary cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={comProblema}
+            onChange={(event) => setComProblema(event.target.checked)}
+            className="accent-orange-500"
+          />
+          Só com problema extraído
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-secondary cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={soValidados}
+            onChange={(event) => setSoValidados(event.target.checked)}
+            className="accent-green-500"
+          />
+          Só validados
+        </label>
+      </section>
+
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Spinner size="md" />
@@ -321,7 +530,7 @@ export default function EfetividadePage() {
               icon={<ShieldCheck size={18} />}
               label="Taxa de efetividade"
               value={`${data.kpi.taxaEfetividade.toLocaleString('pt-BR')}%`}
-              detail={`${data.kpi.clientesEfetivos} clientes sem transferência posterior`}
+              detail={`${data.kpi.clientesEfetivos} clientes sem retorno transferido no mesmo dia`}
               accent="green"
             />
             <KpiCard
@@ -342,7 +551,7 @@ export default function EfetividadePage() {
               icon={<Clock size={18} />}
               label="Tempo mediano de retorno"
               value={formatElapsed(data.kpi.medianaRetornoSegundos)}
-              detail="Da resolução até a transferência posterior"
+              detail="Da resolução até a transferência no mesmo dia"
             />
           </div>
 
@@ -357,7 +566,7 @@ export default function EfetividadePage() {
               <div>
                 <h3 className="font-display font-bold text-primary">Clientes com retorno transferido</h3>
                 <p className="text-xs text-muted mt-1">
-                  {filteredCases.length.toLocaleString('pt-BR')} de {data.totalCasos.toLocaleString('pt-BR')} clientes
+                  {data.casos.length.toLocaleString('pt-BR')} de {data.totalCasos.toLocaleString('pt-BR')} clientes
                 </p>
               </div>
               <label className="relative block w-full sm:w-80">
@@ -380,7 +589,7 @@ export default function EfetividadePage() {
                 <p className="mt-1 text-sm text-muted">
                   {search
                     ? 'Tente outro nome, CNPJ, telefone ou termo.'
-                    : 'As resoluções do período não tiveram transferência posterior registrada.'}
+                    : 'As resoluções do período não tiveram transferência posterior no mesmo dia.'}
                 </p>
               </div>
             ) : (

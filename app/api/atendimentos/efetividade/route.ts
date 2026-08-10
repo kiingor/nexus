@@ -21,6 +21,13 @@ const SELECT_COLS = [
   'criado_em',
   'tipo_atendimento',
   'hub_cliente_id',
+  'tipo_contato',
+  'sentimento_cliente',
+  'pdv',
+  'problema_extraido',
+  'validado',
+  'validacao_transf',
+  'id_ligacao',
 ].join(',')
 
 export async function GET(request: NextRequest) {
@@ -28,6 +35,15 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const from = searchParams.get('from')
   const to = searchParams.get('to')
+  const retornoStatus = searchParams.get('status')
+  const retornoDestino = searchParams.get('destino')
+  const tipoContato = searchParams.get('tipo_contato')
+  const sentimento = searchParams.get('sentimento')
+  const pdv = searchParams.get('pdv')
+  const tipoAtendimento = searchParams.get('tipo_atendimento')
+  const comProblema = searchParams.get('com_problema') === 'true'
+  const validados = searchParams.get('validados') === 'true'
+  const search = (searchParams.get('search') || '').trim()
 
   const rows: EfetividadeSourceRow[] = []
   let offset = 0
@@ -42,12 +58,22 @@ export async function GET(request: NextRequest) {
       .order('id', { ascending: true })
       .range(offset, offset + BATCH_SIZE - 1)
 
-    // O período filtra as resoluções, mas precisamos manter todos os registros
-    // posteriores para descobrir se houve uma transferência depois. Por isso,
-    // apenas o limite inicial pode ser aplicado já na consulta.
-    if (from) {
+    // Como retorno válido precisa ocorrer no mesmo dia da resolução, todos
+    // os registros necessários estão dentro do próprio período consultado.
+    // Usa a mesma data efetiva da Lista: data_hora_chegada com fallback em
+    // criado_em.
+    if (from && to) {
       query = query.or(
-        `criado_em.gte.${from},and(criado_em.is.null,data_hora_chegada.gte.${from})`
+        `and(data_hora_chegada.gte.${from},data_hora_chegada.lte.${to}),` +
+          `and(data_hora_chegada.is.null,criado_em.gte.${from},criado_em.lte.${to})`
+      )
+    } else if (from) {
+      query = query.or(
+        `data_hora_chegada.gte.${from},and(data_hora_chegada.is.null,criado_em.gte.${from})`
+      )
+    } else if (to) {
+      query = query.or(
+        `data_hora_chegada.lte.${to},and(data_hora_chegada.is.null,criado_em.lte.${to})`
       )
     }
 
@@ -65,7 +91,19 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const result = calcularEfetividade(rows, { from, to })
+  const result = calcularEfetividade(rows, {
+    from,
+    to,
+    retornoStatus,
+    retornoDestino,
+    tipoContato,
+    sentimento,
+    pdv,
+    tipoAtendimento,
+    comProblema,
+    validados,
+    search,
+  })
   const totalCasos = result.casos.length
 
   return Response.json({

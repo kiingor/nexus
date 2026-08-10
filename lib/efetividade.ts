@@ -13,6 +13,27 @@ export type EfetividadeSourceRow = {
   criado_em: string | null
   tipo_atendimento: string | null
   hub_cliente_id?: string | null
+  tipo_contato?: string | null
+  sentimento_cliente?: string | null
+  pdv?: string | null
+  problema_extraido?: unknown
+  validado?: boolean | null
+  validacao_transf?: string | null
+  id_ligacao?: string | null
+}
+
+export type EfetividadeFiltros = {
+  from?: string | null
+  to?: string | null
+  retornoStatus?: string | null
+  retornoDestino?: string | null
+  tipoContato?: string | null
+  sentimento?: string | null
+  pdv?: string | null
+  tipoAtendimento?: string | null
+  comProblema?: boolean
+  validados?: boolean
+  search?: string | null
 }
 
 export type EfetividadeCaso = {
@@ -109,25 +130,111 @@ function isInRange(timestamp: number, from?: string | null, to?: string | null):
   return true
 }
 
-function latestResolutionBefore(resolutions: DatedRow[], transferMs: number): DatedRow | null {
+const SAO_PAULO_DAY_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+function saoPauloDay(timestamp: number): string {
+  const parts = SAO_PAULO_DAY_FORMATTER.formatToParts(new Date(timestamp))
+  const year = parts.find((part) => part.type === 'year')?.value ?? ''
+  const month = parts.find((part) => part.type === 'month')?.value ?? ''
+  const day = parts.find((part) => part.type === 'day')?.value ?? ''
+  return `${year}-${month}-${day}`
+}
+
+function latestResolutionBeforeOnSameDay(
+  resolutions: DatedRow[],
+  transferMs: number
+): DatedRow | null {
+  const transferDay = saoPauloDay(transferMs)
   let match: DatedRow | null = null
   for (const row of resolutions) {
     if (row.dataMs >= transferMs) break
-    match = row
+    if (saoPauloDay(row.dataMs) === transferDay) match = row
   }
   return match
+}
+
+function normalized(value: unknown): string {
+  return String(value ?? '').trim().toLocaleLowerCase('pt-BR')
+}
+
+function matchesSentimento(value: string | null | undefined, filter: string): boolean {
+  const text = normalized(value)
+  if (filter === 'positivo') {
+    return /positiv|satisfe|feliz|\bbom\b|[oó]timo|excelente/.test(text)
+  }
+  if (filter === 'negativo') {
+    return /negativ|insatisfe|irrita|frustra|ruim|p[eé]ssimo|raiva/.test(text)
+  }
+  if (filter === 'neutro') return /neutr|\bok\b|indifer/.test(text)
+  return true
+}
+
+function hasExtractedProblem(value: unknown): boolean {
+  if (!value) return false
+  if (typeof value === 'string') {
+    try {
+      return hasExtractedProblem(JSON.parse(value))
+    } catch {
+      return false
+    }
+  }
+  if (typeof value !== 'object') return false
+  return (value as { tem_problema_extraivel?: unknown }).tem_problema_extraivel === true
+}
+
+function matchesResolutionFilters(row: DatedRow, filters: EfetividadeFiltros): boolean {
+  if (filters.tipoContato && row.tipo_contato !== filters.tipoContato) return false
+  if (filters.pdv && row.pdv !== filters.pdv) return false
+  if (filters.tipoAtendimento && row.tipo_atendimento !== filters.tipoAtendimento) return false
+  if (filters.sentimento && !matchesSentimento(row.sentimento_cliente, filters.sentimento)) {
+    return false
+  }
+  if (filters.comProblema && !hasExtractedProblem(row.problema_extraido)) return false
+  if (filters.validados && row.validado !== true && !String(row.validacao_transf ?? '').trim()) {
+    return false
+  }
+
+  const term = normalized(filters.search)
+  if (!term) return true
+  const haystack = normalized(
+    [
+      row.id,
+      row.id_ligacao,
+      row.nome_empresa,
+      row.cliente_nome,
+      row.cnpj,
+      row.phone,
+      row.whatsapp_contato,
+      row.problema_relatado,
+    ]
+      .filter((value) => value !== null && value !== undefined)
+      .join(' ')
+  )
+  const digits = term.replace(/\D/g, '')
+  return haystack.includes(term) || (digits.length >= 4 && onlyDigits(haystack).includes(digits))
+}
+
+function matchesReturnFilters(row: DatedRow, filters: EfetividadeFiltros): boolean {
+  if (filters.retornoStatus && row.status !== filters.retornoStatus) return false
+  if (filters.retornoDestino && row.destino !== filters.retornoDestino) return false
+  return true
 }
 
 /**
  * Mede a efetividade por cliente.
  *
- * O período restringe a ocorrência `resolvida_ia`. Uma transferência pode
- * acontecer depois do fim do período e ainda conta como retorno, desde que
- * seja posterior a uma resolução do mesmo cliente.
+ * O período e os filtros restringem a ocorrência `resolvida_ia`. Uma
+ * transferência só conta como retorno quando acontece depois da resolução
+ * e no mesmo dia civil de America/Sao_Paulo.
  */
 export function calcularEfetividade(
   rows: EfetividadeSourceRow[],
-  range: { from?: string | null; to?: string | null } = {}
+  filters: EfetividadeFiltros = {}
 ): EfetividadeResultado {
   const datedRows = rows
     .map(toDatedRow)
@@ -138,7 +245,11 @@ export function calcularEfetividade(
   const transfersByClient = new Map<string, DatedRow[]>()
 
   for (const row of datedRows) {
-    if (row.status === 'resolvida_ia' && isInRange(row.dataMs, range.from, range.to)) {
+    if (
+      row.status === 'resolvida_ia' &&
+      isInRange(row.dataMs, filters.from, filters.to) &&
+      matchesResolutionFilters(row, filters)
+    ) {
       const list = resolutionsByClient.get(row.clienteKey) ?? []
       list.push(row)
       resolutionsByClient.set(row.clienteKey, list)
@@ -159,7 +270,8 @@ export function calcularEfetividade(
     const pairs: Array<{ resolution: DatedRow; transfer: DatedRow }> = []
 
     for (const transfer of transfers) {
-      const resolution = latestResolutionBefore(resolutions, transfer.dataMs)
+      if (!matchesReturnFilters(transfer, filters)) continue
+      const resolution = latestResolutionBeforeOnSameDay(resolutions, transfer.dataMs)
       if (resolution) pairs.push({ resolution, transfer })
     }
 

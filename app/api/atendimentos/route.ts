@@ -82,6 +82,8 @@ export async function GET(request: NextRequest) {
       `cliente_nome.ilike.${pat}`,
       `problema_relatado.ilike.${pat}`,
       `id_ligacao.ilike.${pat}`,
+      `validacao_transf.ilike.${pat}`,
+      `validacao_comentario.ilike.${pat}`,
     ]
     if (/^\d+$/.test(search)) orParts.push(`id.eq.${search}`)
     query = query.or(orParts.join(','))

@@ -8,7 +8,7 @@ import {
 
 type ChatClient = ReturnType<typeof getIaRouterClient>
 
-const MAX_ATTEMPTS_PER_PROVIDER = 2
+const REQUEST_TIMEOUT_MS = 18_000
 
 function isTransientAiError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
@@ -39,11 +39,12 @@ async function generateWithRetry(
   client: ChatClient,
   model: string,
   type: 'instruction' | 'error',
-  prompt: string
+  prompt: string,
+  maxAttempts: number
 ): Promise<string> {
   let lastError: unknown
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PROVIDER; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const response = await client.chat.completions.create({
         model,
@@ -53,14 +54,14 @@ async function generateWithRetry(
           { role: 'system', content: type === 'instruction' ? INSTRUCTION_SYSTEM_PROMPT : ERROR_SYSTEM_PROMPT },
           { role: 'user', content: prompt },
         ],
-      })
+      }, { timeout: REQUEST_TIMEOUT_MS })
 
       const text = response.choices[0]?.message?.content
       if (!text) throw new Error('Sem resposta da IA')
       return text
     } catch (error) {
       lastError = error
-      if (!isTransientAiError(error) || attempt === MAX_ATTEMPTS_PER_PROVIDER) break
+      if (!isTransientAiError(error) || attempt === maxAttempts) break
       await waitBeforeRetry(attempt)
     }
   }
@@ -130,19 +131,20 @@ export async function POST(request: NextRequest) {
     // Prefere o gateway iarouter. Em falha transitória, repete uma vez e,
     // quando há uma chave OpenAI direta disponível, usa-a como fallback.
     const usarGateway = hasIaRouter()
-    const providers: Array<{ client: ChatClient; model: string; name: string }> = usarGateway
-      ? [{ client: getIaRouterClient(), model: IAROUTER_MODEL, name: 'iarouter' }]
-      : [{ client: getOpenAIClient(), model: 'gpt-4.1-mini', name: 'openai' }]
+    const temFallbackDireto = usarGateway && !!process.env.OPENAI_API_KEY
+    const providers: Array<{ client: ChatClient; model: string; name: string; attempts: number }> = usarGateway
+      ? [{ client: getIaRouterClient(), model: IAROUTER_MODEL, name: 'iarouter', attempts: temFallbackDireto ? 1 : 2 }]
+      : [{ client: getOpenAIClient(), model: 'gpt-4.1-mini', name: 'openai', attempts: 2 }]
 
-    if (usarGateway && process.env.OPENAI_API_KEY) {
-      providers.push({ client: getOpenAIClient(), model: 'gpt-4.1-mini', name: 'openai-fallback' })
+    if (temFallbackDireto) {
+      providers.push({ client: getOpenAIClient(), model: 'gpt-4.1-mini', name: 'openai-fallback', attempts: 1 })
     }
 
     let text = ''
     let lastError: unknown
     for (const provider of providers) {
       try {
-        text = await generateWithRetry(provider.client, provider.model, type, prompt)
+        text = await generateWithRetry(provider.client, provider.model, type, prompt, provider.attempts)
         break
       } catch (error) {
         lastError = error

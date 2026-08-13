@@ -43,7 +43,8 @@ const GENERATED_CHUNK_TYPES: Chunk['chunk_type'][] = ['item_full', 'step', 'erro
 let openai: OpenAI | null = null
 let gemini: GoogleGenerativeAI | null = null
 
-function getOpenAI(): OpenAI {
+function getOpenAI(apiKey?: string): OpenAI {
+  if (apiKey) return new OpenAI({ apiKey })
   if (!openai) {
     openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   }
@@ -131,8 +132,8 @@ function buildChunks(
 // ---------------------------------------------------------------------------
 // Generate embeddings
 // ---------------------------------------------------------------------------
-async function getOpenAIEmbedding(text: string): Promise<number[]> {
-  const res = await getOpenAI().embeddings.create({
+async function getOpenAIEmbedding(text: string, apiKey?: string): Promise<number[]> {
+  const res = await getOpenAI(apiKey).embeddings.create({
     model: 'text-embedding-3-small',
     input: text,
   })
@@ -170,7 +171,7 @@ export async function generateQueryEmbedding(text: string): Promise<number[]> {
  * Generate (or regenerate) embeddings for a knowledge item.
  * Call after creating or updating an item.
  */
-export async function syncItemEmbeddings(itemId: string): Promise<void> {
+export async function syncItemEmbeddings(itemId: string, apiKey?: string): Promise<void> {
   const supabase = getSupabase()
 
   // Fetch the item with module and product info
@@ -195,7 +196,7 @@ export async function syncItemEmbeddings(itemId: string): Promise<void> {
   }
 
   const rows = await Promise.all(chunks.map(async (chunk) => {
-    const embeddingOpenai = await getOpenAIEmbedding(chunk.chunk_text)
+    const embeddingOpenai = await getOpenAIEmbedding(chunk.chunk_text, apiKey)
     let embeddingGemini: number[] | null = null
 
     try {

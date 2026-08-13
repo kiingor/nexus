@@ -83,7 +83,8 @@ export async function POST(
 
   // Só confirmar a criação depois que o item estiver pesquisável.
   try {
-    await syncItemEmbeddings(data.id)
+    const embeddingApiKey = request.headers.get('x-embedding-api-key') || undefined
+    await syncItemEmbeddings(data.id, embeddingApiKey)
   } catch (embeddingError: unknown) {
     // A knowledge item that cannot be searched is not a successful create.
     // Remove the just-created row so callers can retry without duplicates.

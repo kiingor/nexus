@@ -1,20 +1,15 @@
 'use client'
 
-import { Building2, Calendar, Layers, MessageCircle, Monitor, Phone, PhoneCall, ShieldCheck, Star } from 'lucide-react'
+import { Building2, Calendar, MessageCircle, Monitor, Phone, PhoneCall, ShieldCheck, Star } from 'lucide-react'
 import type { AtendimentoRecord } from '@/lib/types'
 
-// `mergedCount`/`mergedIds` são opcionais — vêm do agrupamento client-side
-// feito na página. Quando ausentes, o componente se comporta como antes.
-export type AtendimentoListRecord = AtendimentoRecord & {
-  mergedCount?: number
-  mergedIds?: number[]
-}
+export type AtendimentoListRecord = AtendimentoRecord
 
 interface Props {
   records: AtendimentoListRecord[]
   onSelect: (record: AtendimentoListRecord) => void
   // Seleção pra export. Quando `selectedIds` é fornecido, aparece a coluna
-  // de checkbox. Um atendimento "unido" seleciona todos os seus mergedIds.
+  // de checkbox.
   selectedIds?: Set<number>
   onToggle?: (record: AtendimentoListRecord) => void
   onToggleAll?: (marcar: boolean) => void
@@ -257,15 +252,6 @@ export function AtendimentosList({
                         >
                           <Monitor size={10} className="shrink-0" />
                           <span className="truncate">{r.pdv}</span>
-                        </span>
-                      )}
-                      {typeof r.mergedCount === 'number' && r.mergedCount > 1 && (
-                        <span
-                          title={`${r.mergedCount} atendimentos unidos · IDs: ${(r.mergedIds ?? []).join(', ')}`}
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border bg-orange-500/10 border-orange-500/30 text-orange-300 shrink-0 whitespace-nowrap"
-                        >
-                          <Layers size={10} />
-                          +{r.mergedCount - 1} unidos
                         </span>
                       )}
                       {(r.validado || !!r.validacao_transf?.trim()) && (

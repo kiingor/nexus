@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { calcularEfetividade, type EfetividadeSourceRow } from '@/lib/efetividade'
+import { dedupeConsecutiveTransfers } from '@/lib/atendimento-dedup'
 import { createServerClient } from '@/lib/supabase/server'
 
 const BATCH_SIZE = 1000
@@ -93,7 +94,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const result = calcularEfetividade(rows, {
+  const dedupedRows = dedupeConsecutiveTransfers(rows)
+  const result = calcularEfetividade(dedupedRows, {
     from,
     to,
     retornoStatus,

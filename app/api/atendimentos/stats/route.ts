@@ -1,53 +1,30 @@
-/**
- * GET /api/atendimentos/stats
- *
- * Retorna contadores e soma de custo agregados sobre TODOS os atendimentos
- * que casam com os filtros (sem paginação). Usado pelos cards da página.
- *
- * Query params: mesmos da rota /api/atendimentos (status, destino, from,
- * to, search, sentimento, com_problema), exceto page/pageSize.
- *
- * Resposta:
- * {
- *   total: number,
- *   em_atendimento: number,
- *   resolvida_ia: number,
- *   transferida: number,
- *   interrompida: number,
- *   custoTotal: number
- * }
- */
-
 import { NextRequest } from 'next/server'
+import { dedupeConsecutiveTransfers } from '@/lib/atendimento-dedup'
 import { createServerClient } from '@/lib/supabase/server'
 
-type Counts = {
-  total: number
-  em_atendimento: number
-  resolvida_ia: number
-  resolvido_parcialmente: number
-  transferida: number
-  interrompida: number
-  custoTotal: number
-}
+const BATCH_SIZE = 1000
+const MAX_TOTAL_ROWS = 500_000
 
-// Generic constraint: aceita qualquer query builder do Supabase JS que
-// suporte os métodos abaixo e retorne ele mesmo (encadeável). Isso cobre
-// tanto chains iniciadas com .select(*, { count: 'exact', head: true })
-// quanto .select('col') usadas pra somar custo.
+type StatsRow = {
+  id: number
+  status: string | null
+  criado_em: string | null
+  data_hora_chegada: string | null
+  hub_cliente_id: string | null
+  cnpj: string | null
+  phone: string | null
+  whatsapp_contato: string | null
+  custo_real: number | string | null
+}
 type FilterableQuery<T> = {
-  eq: (col: string, val: unknown) => T
-  gte: (col: string, val: unknown) => T
-  lte: (col: string, val: unknown) => T
+  eq: (column: string, value: unknown) => T
   or: (filters: string) => T
 }
 
-function applyFilters<T extends FilterableQuery<T>>(
-  q: T,
-  searchParams: URLSearchParams,
-  excludeStatus = false
+function applyNonStatusFilters<T extends FilterableQuery<T>>(
+  query: T,
+  searchParams: URLSearchParams
 ): T {
-  const status = searchParams.get('status')
   const destino = searchParams.get('destino')
   const cnpj = searchParams.get('cnpj')
   const phone = searchParams.get('phone')
@@ -58,137 +35,114 @@ function applyFilters<T extends FilterableQuery<T>>(
   const search = (searchParams.get('search') || '').trim()
   const sentimento = searchParams.get('sentimento')
   const tipoContato = searchParams.get('tipo_contato')
+  const pdv = searchParams.get('pdv')
+  const tipoAtendimento = searchParams.get('tipo_atendimento')
 
-  if (!excludeStatus && status) q = q.eq('status', status)
-  if (destino) q = q.eq('destino', destino)
-  if (cnpj) q = q.eq('cnpj', cnpj)
-  if (phone) q = q.eq('phone', phone)
+  if (destino) query = query.eq('destino', destino)
+  if (cnpj) query = query.eq('cnpj', cnpj)
+  if (phone) query = query.eq('phone', phone)
   if (from && to) {
-    q = q.or(
+    query = query.or(
       `and(data_hora_chegada.gte.${from},data_hora_chegada.lte.${to}),` +
-      `and(data_hora_chegada.is.null,criado_em.gte.${from},criado_em.lte.${to})`
+        `and(data_hora_chegada.is.null,criado_em.gte.${from},criado_em.lte.${to})`
     )
   } else if (from) {
-    q = q.or(
+    query = query.or(
       `data_hora_chegada.gte.${from},and(data_hora_chegada.is.null,criado_em.gte.${from})`
     )
   } else if (to) {
-    q = q.or(
+    query = query.or(
       `data_hora_chegada.lte.${to},and(data_hora_chegada.is.null,criado_em.lte.${to})`
     )
   }
-  if (soComProblema) q = q.eq('problema_extraido->>tem_problema_extraivel', 'true')
-  if (soValidados) q = q.or('validado.eq.true,validacao_transf.not.is.null')
-  if (tipoContato === 'ligacao' || tipoContato === 'chat')
-    q = q.eq('tipo_contato', tipoContato)
-
-  // Mesmo filtro da Lista, pra que os cards batam com a tabela.
-  const tipoAtendimento = searchParams.get('tipo_atendimento')
-  if (tipoAtendimento) q = q.eq('tipo_atendimento', tipoAtendimento)
+  if (soComProblema) query = query.eq('problema_extraido->>tem_problema_extraivel', 'true')
+  if (soValidados) query = query.or('validado.eq.true,validacao_transf.not.is.null')
+  if (tipoContato === 'ligacao' || tipoContato === 'chat') {
+    query = query.eq('tipo_contato', tipoContato)
+  }
+  if (pdv) query = query.eq('pdv', pdv)
+  if (tipoAtendimento) query = query.eq('tipo_atendimento', tipoAtendimento)
 
   if (search) {
     const escaped = search.replace(/[%_]/g, '\\$&')
-    const pat = `%${escaped}%`
-    const orParts = [
-      `nome_empresa.ilike.${pat}`,
-      `cnpj.ilike.${pat}`,
-      `phone.ilike.${pat}`,
-      `cliente_nome.ilike.${pat}`,
-      `problema_relatado.ilike.${pat}`,
-      `id_ligacao.ilike.${pat}`,
-      `validacao_transf.ilike.${pat}`,
-      `validacao_comentario.ilike.${pat}`,
+    const pattern = `%${escaped}%`
+    const parts = [
+      `nome_empresa.ilike.${pattern}`,
+      `cnpj.ilike.${pattern}`,
+      `phone.ilike.${pattern}`,
+      `cliente_nome.ilike.${pattern}`,
+      `problema_relatado.ilike.${pattern}`,
+      `id_ligacao.ilike.${pattern}`,
+      `validacao_transf.ilike.${pattern}`,
+      `validacao_comentario.ilike.${pattern}`,
     ]
-    if (/^\d+$/.test(search)) orParts.push(`id.eq.${search}`)
-    q = q.or(orParts.join(','))
+    if (/^\d+$/.test(search)) parts.push(`id.eq.${search}`)
+    query = query.or(parts.join(','))
   }
 
   if (sentimento === 'positivo') {
-    q = q.or(
+    query = query.or(
       'sentimento_cliente.ilike.%positiv%,sentimento_cliente.ilike.%satisfe%,sentimento_cliente.ilike.%feliz%,sentimento_cliente.ilike.%bom%,sentimento_cliente.ilike.%ótimo%,sentimento_cliente.ilike.%otimo%,sentimento_cliente.ilike.%excelente%'
     )
   } else if (sentimento === 'negativo') {
-    q = q.or(
+    query = query.or(
       'sentimento_cliente.ilike.%negativ%,sentimento_cliente.ilike.%insatisfe%,sentimento_cliente.ilike.%irrita%,sentimento_cliente.ilike.%frustra%,sentimento_cliente.ilike.%ruim%,sentimento_cliente.ilike.%péssimo%,sentimento_cliente.ilike.%pessimo%,sentimento_cliente.ilike.%raiva%'
     )
   } else if (sentimento === 'neutro') {
-    q = q.or(
+    query = query.or(
       'sentimento_cliente.ilike.%neutr%,sentimento_cliente.ilike.%ok%,sentimento_cliente.ilike.%indifer%'
     )
   }
 
-  return q
-}
-
-async function countStatus(
-  supabase: ReturnType<typeof createServerClient>,
-  searchParams: URLSearchParams,
-  statusValue: string
-): Promise<number> {
-  let q = supabase
-    .from('atendimentos')
-    .select('id', { count: 'exact', head: true })
-  q = applyFilters(q, searchParams, true).eq('status', statusValue)
-  const { count, error } = await q
-  if (error) return 0
-  return count ?? 0
+  return query
 }
 
 export async function GET(request: NextRequest) {
   const supabase = createServerClient()
   const { searchParams } = new URL(request.url)
+  const requestedStatus = searchParams.get('status')
+  const rawRows: StatsRow[] = []
+  let offset = 0
 
-  // Count total (respeitando o filtro de status atual, se houver)
-  let totalQuery = supabase
-    .from('atendimentos')
-    .select('id', { count: 'exact', head: true })
-  totalQuery = applyFilters(totalQuery, searchParams)
-  const totalRes = await totalQuery
+  while (true) {
+    let query = supabase
+      .from('atendimentos')
+      .select(
+        'id,status,criado_em,data_hora_chegada,hub_cliente_id,cnpj,phone,whatsapp_contato,custo_real'
+      )
+      .order('criado_em', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + BATCH_SIZE - 1)
 
-  if (totalRes.error) {
-    return Response.json({ error: totalRes.error.message }, { status: 500 })
+    query = applyNonStatusFilters(query, searchParams)
+    const { data, error } = await query
+    if (error) return Response.json({ error: error.message }, { status: 500 })
+
+    const batch = (data ?? []) as unknown as StatsRow[]
+    rawRows.push(...batch)
+    if (batch.length < BATCH_SIZE || rawRows.length >= MAX_TOTAL_ROWS) break
+    offset += BATCH_SIZE
   }
 
-  // Counts por status — sempre todos, ignorando o filtro de status atual,
-  // pra que os cards mostrem a distribuição real do conjunto filtrado.
-  const [emAtendimento, resolvida, parcialmente, transferida, interrompida] = await Promise.all([
-    countStatus(supabase, searchParams, 'em_atendimento'),
-    countStatus(supabase, searchParams, 'resolvida_ia'),
-    countStatus(supabase, searchParams, 'resolvido_parcialmente'),
-    countStatus(supabase, searchParams, 'transferida'),
-    countStatus(supabase, searchParams, 'interrompida'),
-  ])
+  const dedupedRows = dedupeConsecutiveTransfers(rawRows)
+  const visibleRows = dedupedRows.filter(
+    (row) => !requestedStatus || requestedStatus === 'all' || row.status === requestedStatus
+  )
 
-  // Soma de custo_real: usa o mesmo filtro do total. Como o Supabase JS
-  // não tem helper de sum() agregado direto, fazemos uma query separada
-  // selecionando custo_real e somando aqui — limitado a 5000 linhas pra
-  // segurança (cobre praticamente todo cenário plausível).
-  let custoQuery = supabase
-    .from('atendimentos')
-    .select('custo_real')
-    .limit(5000)
-  custoQuery = applyFilters(custoQuery, searchParams)
-  const custoRes = await custoQuery
+  const count = (status: string) => dedupedRows.filter((row) => row.status === status).length
+  const custoTotal = visibleRows.reduce((sum, row) => {
+    const value = row.custo_real == null ? 0 : Number(row.custo_real)
+    return Number.isFinite(value) ? sum + value : sum
+  }, 0)
 
-  let custoTotal = 0
-  if (!custoRes.error && custoRes.data) {
-    for (const row of custoRes.data) {
-      const v = row.custo_real
-      if (v == null) continue
-      const n = typeof v === 'number' ? v : Number(v)
-      if (!Number.isNaN(n)) custoTotal += n
-    }
-  }
-
-  const result: Counts = {
-    total: totalRes.count ?? 0,
-    em_atendimento: emAtendimento,
-    resolvida_ia: resolvida,
-    resolvido_parcialmente: parcialmente,
-    transferida: transferida,
-    interrompida: interrompida,
+  return Response.json({
+    total: visibleRows.length,
+    em_atendimento: count('em_atendimento'),
+    resolvida_ia: count('resolvida_ia'),
+    resolvido_parcialmente: count('resolvido_parcialmente'),
+    transferida: count('transferida'),
+    interrompida: count('interrompida'),
     custoTotal,
-  }
-
-  return Response.json(result)
+    duplicatesHidden: rawRows.length - dedupedRows.length,
+  })
 }

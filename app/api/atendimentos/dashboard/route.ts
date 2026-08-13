@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { classifyMotivo, MOTIVO_CATEGORIES } from '@/lib/atendimentos'
+import { dedupeConsecutiveTransfers } from '@/lib/atendimento-dedup'
 import { TIPO_ATENDIMENTO_LABELS, motivoCanonico } from '@/lib/tipos-atendimento'
 import type { AtendimentoRecord } from '@/lib/types'
 
@@ -43,6 +44,10 @@ type RowSubset = Pick<
   | 'transcricao'
   | 'problema_extraido'
   | 'tipo_atendimento'
+  | 'hub_cliente_id'
+  | 'cnpj'
+  | 'phone'
+  | 'whatsapp_contato'
 >
 
 export async function GET(request: NextRequest) {
@@ -62,8 +67,8 @@ export async function GET(request: NextRequest) {
   // esgotar (rows < BATCH_SIZE) ou bater o freio defensivo MAX_TOTAL_ROWS.
   // Os mesmos filtros são re-aplicados em cada batch.
   const SELECT_COLS =
-    'id, status, criado_em, data_hora_chegada, problema_relatado, transcricao, problema_extraido, tipo_atendimento'
-  const rows: RowSubset[] = []
+    'id, status, criado_em, data_hora_chegada, problema_relatado, transcricao, problema_extraido, tipo_atendimento, hub_cliente_id, cnpj, phone, whatsapp_contato'
+  const rawRows: RowSubset[] = []
   let totalCount = 0
   let truncated = false
   let offset = 0
@@ -88,7 +93,8 @@ export async function GET(request: NextRequest) {
     ) {
       q = q.eq('destino', destino)
     }
-    if (status && status !== 'all') q = q.eq('status', status)
+    // Status é aplicado depois da deduplicação para que uma resolução entre
+    // duas transferências interrompa corretamente a sequência.
     if (tipoContato === 'ligacao' || tipoContato === 'chat') q = q.eq('tipo_contato', tipoContato)
     if (soComProblema) q = q.eq('problema_extraido->>tem_problema_extraivel', 'true')
     if (sentimento === 'positivo') {
@@ -130,14 +136,19 @@ export async function GET(request: NextRequest) {
     if (error) return Response.json({ error: error.message }, { status: 500 })
     if (offset === 0) totalCount = count ?? 0
     const batch = (data ?? []) as unknown as RowSubset[]
-    rows.push(...batch)
+    rawRows.push(...batch)
     if (batch.length < BATCH_SIZE) break
     offset += BATCH_SIZE
-    if (rows.length >= MAX_TOTAL_ROWS) {
-      truncated = totalCount > rows.length
+    if (rawRows.length >= MAX_TOTAL_ROWS) {
+      truncated = totalCount > rawRows.length
       break
     }
   }
+
+  const allDedupedRows = dedupeConsecutiveTransfers(rawRows)
+  const rows = allDedupedRows.filter(
+    (row) => !status || status === 'all' || row.status === status
+  )
 
   // ── KPI ────────────────────────────────────────────────────────────
   let resolvidos = 0, parcialmente = 0, transferidos = 0, emAtendimento = 0, interrompida = 0
@@ -303,6 +314,7 @@ export async function GET(request: NextRequest) {
     mostResolvidos,
     mostTransferidos,
     worstMotivos,
+    duplicatesHidden: rawRows.length - allDedupedRows.length,
     truncated,
   })
 }

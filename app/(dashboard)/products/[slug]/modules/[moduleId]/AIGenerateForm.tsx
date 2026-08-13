@@ -35,15 +35,28 @@ export function AIGenerateForm({ moduleId, moduleType, onSaved, onCancel }: Prop
       const res = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: description.trim(), type: moduleType }),
+        body: JSON.stringify({ prompt: description.trim(), type: moduleType }),
       });
 
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const responseText = await res.text();
+        let message = 'Erro ao gerar estrutura. Tente novamente.';
+        try {
+          const body = JSON.parse(responseText) as { error?: string };
+          if (body.error) message = body.error;
+        } catch {
+          if (responseText.trim()) message = responseText;
+        }
+        throw new Error(message);
+      }
       const data = await res.json();
-      setGenerated(data);
+      if (!data?.content?.type) {
+        throw new Error('A IA retornou uma estrutura inválida. Tente novamente.');
+      }
+      setGenerated({ title: data.title ?? '', ...data.content });
       setTitle(data.title ?? '');
-    } catch {
-      error('Erro ao gerar estrutura. Tente novamente.');
+    } catch (err) {
+      error(err instanceof Error ? err.message : 'Erro ao gerar estrutura. Tente novamente.');
     } finally {
       setGenerating(false);
     }
@@ -53,7 +66,17 @@ export function AIGenerateForm({ moduleId, moduleType, onSaved, onCancel }: Prop
     if (!generated || !title.trim()) return;
     setSaving(true);
 
-    const { title: _t, ...content } = generated;
+    const content: KnowledgeContent =
+      generated.type === 'instruction'
+        ? { type: 'instruction', steps: generated.steps }
+        : {
+            type: 'error',
+            error_code: generated.error_code,
+            description: generated.description,
+            cause: generated.cause,
+            solution: generated.solution,
+            orientation: generated.orientation,
+          };
     const supabase = createClient();
     const { data, error: err } = await supabase
       .from('knowledge_items')

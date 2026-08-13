@@ -6,6 +6,68 @@ import {
   IAROUTER_MODEL,
 } from '@/lib/openai'
 
+type ChatClient = ReturnType<typeof getIaRouterClient>
+
+const MAX_ATTEMPTS_PER_PROVIDER = 2
+
+function isTransientAiError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+
+  const candidate = error as {
+    status?: number
+    code?: string
+    message?: string
+    cause?: { code?: string; message?: string }
+  }
+  const status = Number(candidate.status || 0)
+  const text = `${candidate.code || ''} ${candidate.message || ''} ${candidate.cause?.code || ''} ${candidate.cause?.message || ''}`
+
+  return (
+    status === 408 ||
+    status === 409 ||
+    status === 429 ||
+    status >= 500 ||
+    /timeout|timed out|econn|socket|fetch failed|network|bad gateway|service unavailable/i.test(text)
+  )
+}
+
+async function waitBeforeRetry(attempt: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 500 * attempt))
+}
+
+async function generateWithRetry(
+  client: ChatClient,
+  model: string,
+  type: 'instruction' | 'error',
+  prompt: string
+): Promise<string> {
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PROVIDER; attempt += 1) {
+    try {
+      const response = await client.chat.completions.create({
+        model,
+        temperature: 0.3,
+        max_tokens: 2048,
+        messages: [
+          { role: 'system', content: type === 'instruction' ? INSTRUCTION_SYSTEM_PROMPT : ERROR_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+      })
+
+      const text = response.choices[0]?.message?.content
+      if (!text) throw new Error('Sem resposta da IA')
+      return text
+    } catch (error) {
+      lastError = error
+      if (!isTransientAiError(error) || attempt === MAX_ATTEMPTS_PER_PROVIDER) break
+      await waitBeforeRetry(attempt)
+    }
+  }
+
+  throw lastError
+}
+
 const INSTRUCTION_SYSTEM_PROMPT = `Você é um assistente especializado em estruturar bases de conhecimento para agentes de IA.
 O usuário vai descrever um processo em linguagem natural.
 Retorne APENAS um objeto JSON válido, sem markdown, sem explicações, sem texto fora do JSON.
@@ -65,26 +127,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Prefere o gateway iarouter (quando configurado) — a conta OpenAI
-    // direta pode estar sem chave válida.
+    // Prefere o gateway iarouter. Em falha transitória, repete uma vez e,
+    // quando há uma chave OpenAI direta disponível, usa-a como fallback.
     const usarGateway = hasIaRouter()
-    const openai = usarGateway ? getIaRouterClient() : getOpenAIClient()
-    const model = usarGateway ? IAROUTER_MODEL : 'gpt-4.1-mini'
+    const providers: Array<{ client: ChatClient; model: string; name: string }> = usarGateway
+      ? [{ client: getIaRouterClient(), model: IAROUTER_MODEL, name: 'iarouter' }]
+      : [{ client: getOpenAIClient(), model: 'gpt-4.1-mini', name: 'openai' }]
 
-    const response = await openai.chat.completions.create({
-      model,
-      temperature: 0.3,
-      max_tokens: 2048,
-      messages: [
-        { role: 'system', content: type === 'instruction' ? INSTRUCTION_SYSTEM_PROMPT : ERROR_SYSTEM_PROMPT },
-        { role: 'user', content: prompt },
-      ],
-    })
-
-    const text = response.choices[0]?.message?.content
-    if (!text) {
-      return Response.json({ error: 'Sem resposta da IA' }, { status: 500 })
+    if (usarGateway && process.env.OPENAI_API_KEY) {
+      providers.push({ client: getOpenAIClient(), model: 'gpt-4.1-mini', name: 'openai-fallback' })
     }
+
+    let text = ''
+    let lastError: unknown
+    for (const provider of providers) {
+      try {
+        text = await generateWithRetry(provider.client, provider.model, type, prompt)
+        break
+      } catch (error) {
+        lastError = error
+        console.error(`AI generate provider failed (${provider.name}):`, error)
+      }
+    }
+
+    if (!text) throw lastError || new Error('Sem resposta da IA')
 
     // O gateway às vezes embrulha o JSON em cercas de código.
     const limpo = text.replace(/```json/gi, '').replace(/```/g, '').trim()
@@ -108,8 +174,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('AI generate error:', error)
     return Response.json(
-      { error: 'Erro ao gerar conteúdo. Verifique a API key.' },
-      { status: 500 }
+      { error: 'O serviço de IA está temporariamente indisponível. Tente novamente em alguns instantes.' },
+      { status: 502 }
     )
   }
 }

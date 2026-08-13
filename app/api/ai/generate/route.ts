@@ -5,10 +5,12 @@ import {
   hasIaRouter,
   IAROUTER_MODEL,
 } from '@/lib/openai'
+import { getAnthropicClient } from '@/lib/anthropic'
 
 type ChatClient = ReturnType<typeof getIaRouterClient>
 
-const REQUEST_TIMEOUT_MS = 18_000
+const REQUEST_TIMEOUT_MS = 15_000
+const ANTHROPIC_GENERATE_MODEL = process.env.ANTHROPIC_GENERATE_MODEL || 'claude-haiku-4-5-20251001'
 
 function isTransientAiError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
@@ -67,6 +69,26 @@ async function generateWithRetry(
   }
 
   throw lastError
+}
+
+async function generateWithAnthropic(
+  type: 'instruction' | 'error',
+  prompt: string
+): Promise<string> {
+  const response = await getAnthropicClient().messages.create({
+    model: ANTHROPIC_GENERATE_MODEL,
+    max_tokens: 2048,
+    temperature: 0.3,
+    system: type === 'instruction' ? INSTRUCTION_SYSTEM_PROMPT : ERROR_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: prompt }],
+  }, { timeout: REQUEST_TIMEOUT_MS })
+
+  const text = response.content
+    .map((block) => block.type === 'text' ? block.text : '')
+    .join('')
+    .trim()
+  if (!text) throw new Error('Sem resposta da IA')
+  return text
 }
 
 const INSTRUCTION_SYSTEM_PROMPT = `Você é um assistente especializado em estruturar bases de conhecimento para agentes de IA.
@@ -128,10 +150,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Prefere o gateway iarouter. Em falha transitória, repete uma vez e,
-    // quando há uma chave OpenAI direta disponível, usa-a como fallback.
+    // O Haiku é o caminho mais rápido para esta transformação estruturada.
+    // OpenAI e iarouter permanecem como alternativas independentes.
     const usarGateway = hasIaRouter()
-    const temFallbackDireto = usarGateway && !!process.env.OPENAI_API_KEY
+    const temAnthropic = !!process.env.ANTHROPIC_API_KEY
+    const temOpenAiDireto = !!process.env.OPENAI_API_KEY
+    const temFallbackDireto = usarGateway && temOpenAiDireto
     const providers: Array<{ client: ChatClient; model: string; name: string; attempts: number }> = usarGateway
       ? [{ client: getIaRouterClient(), model: IAROUTER_MODEL, name: 'iarouter', attempts: temFallbackDireto ? 1 : 2 }]
       : [{ client: getOpenAIClient(), model: 'gpt-4.1-mini', name: 'openai', attempts: 2 }]
@@ -142,7 +166,18 @@ export async function POST(request: NextRequest) {
 
     let text = ''
     let lastError: unknown
+
+    if (temAnthropic) {
+      try {
+        text = await generateWithAnthropic(type, prompt)
+      } catch (error) {
+        lastError = error
+        console.error('AI generate provider failed (anthropic-haiku):', error)
+      }
+    }
+
     for (const provider of providers) {
+      if (text) break
       try {
         text = await generateWithRetry(provider.client, provider.model, type, prompt, provider.attempts)
         break

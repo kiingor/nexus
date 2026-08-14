@@ -20,6 +20,8 @@ type DedupeRow = Pick<
 
 type FilterableQuery<T> = {
   eq: (column: string, value: unknown) => T
+  gte: (column: string, value: unknown) => T
+  lt: (column: string, value: unknown) => T
   or: (filters: string) => T
 }
 
@@ -45,20 +47,13 @@ function applyNonStatusFilters<T extends FilterableQuery<T>>(
   if (cnpj) query = query.eq('cnpj', cnpj)
   if (phone) query = query.eq('phone', phone)
 
-  if (from && to) {
-    query = query.or(
-      `and(data_hora_chegada.gte.${from},data_hora_chegada.lte.${to}),` +
-        `and(data_hora_chegada.is.null,criado_em.gte.${from},criado_em.lte.${to})`
-    )
-  } else if (from) {
-    query = query.or(
-      `data_hora_chegada.gte.${from},and(data_hora_chegada.is.null,criado_em.gte.${from})`
-    )
-  } else if (to) {
-    query = query.or(
-      `data_hora_chegada.lte.${to},and(data_hora_chegada.is.null,criado_em.lte.${to})`
-    )
-  }
+  // A lista e o dashboard precisam usar a mesma referência temporal.
+  // `criado_em` representa quando o registro entrou no portal (resolução ou
+  // transferência). Usar `data_hora_chegada` aqui fazia um atendimento
+  // iniciado ontem, mas resolvido hoje, desaparecer da lista de hoje enquanto
+  // continuava contado no dashboard e na Agenda.
+  if (from) query = query.gte('criado_em', from)
+  if (to) query = query.lt('criado_em', to)
 
   if (soComProblema) {
     query = query.eq('problema_extraido->>tem_problema_extraivel', 'true')

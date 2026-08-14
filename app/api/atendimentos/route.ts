@@ -113,10 +113,17 @@ function matchesEffectiveDate(row: DedupeRow, searchParams: URLSearchParams): bo
   const to = searchParams.get('to')
   if (!from && !to) return true
 
-  const effective = Date.parse(row.data_hora_chegada || row.criado_em || '')
+  // Para resoluções, o período representa o dia em que a ocorrência foi
+  // efetivamente encerrada e registrada no portal. Nos demais status,
+  // preservamos a data real de início do atendimento quando disponível.
+  const effectiveValue =
+    row.status === 'resolvida_ia'
+      ? row.criado_em
+      : row.data_hora_chegada || row.criado_em
+  const effective = Date.parse(effectiveValue || '')
   if (!Number.isFinite(effective)) return false
   if (from && effective < Date.parse(from)) return false
-  if (to && effective > Date.parse(to)) return false
+  if (to && effective >= Date.parse(to)) return false
   return true
 }
 
@@ -159,9 +166,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // PostgREST pode devolver falsos positivos na expressão OR que implementa
-  // o fallback de data. Revalida no servidor com a regra canônica: chegada
-  // prevalece; criado_em só vale quando chegada é nula.
+  // Revalida no servidor com a regra canônica: resoluções usam o momento do
+  // fechamento; os demais status priorizam a chegada real.
   const effectiveRows = rawRows.filter((row) => matchesEffectiveDate(row, searchParams))
   const allDedupedRows = dedupeConsecutiveTransfers(effectiveRows)
   const dedupedRows = allDedupedRows

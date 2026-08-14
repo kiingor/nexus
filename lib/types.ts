@@ -264,6 +264,9 @@ export interface AtendimentoRecord {
   // Sub-categoria do atendimento (preenchida pelo classificador AI do n8n).
   // Ex: 'erro_337', 'boleto_mensalidade', 'suporte_geral', etc.
   tipo_atendimento: string | null
+  // Nome do setor/subsetor de destino gravado pelo fluxo de transferência.
+  // Ex.: "ServiceDesk Matriz Chat", "Natal", "OURO PRETO".
+  subsetor_nome?: string | null
   // Conversa copiada do Hub para o banco Nexus no encerramento.
   hub_cliente_id?: string | null
   hub_ticket_id?: string | null

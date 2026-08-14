@@ -89,6 +89,12 @@ export function AtendimentoDetailModal({
                 {capitalize(detail.destino)}
               </span>
             )}
+            {detail.subsetor_nome?.trim() && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-cyan-500/10 border-cyan-500/30 text-cyan-300">
+                <Building2 size={12} />
+                {detail.subsetor_nome}
+              </span>
+            )}
             {tipoLabel && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-orange-500/10 border-orange-500/30 text-orange-300">
                 <FileText size={12} />

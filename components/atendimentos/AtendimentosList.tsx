@@ -159,6 +159,7 @@ export function AtendimentosList({
               <th className="px-4 py-3 font-medium">Tipo</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Destino</th>
+              <th className="px-4 py-3 font-medium">Subsetor</th>
               <th className="px-4 py-3 font-medium">Empresa</th>
               <th className="px-4 py-3 font-medium">Telefone</th>
               <th className="px-4 py-3 font-medium">Nota</th>
@@ -240,6 +241,9 @@ export function AtendimentosList({
                     ) : (
                       <span className="text-xs text-muted">—</span>
                     )}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-secondary whitespace-nowrap">
+                    {r.subsetor_nome?.trim() || '—'}
                   </td>
                   <td className="px-4 py-3 text-sm text-primary">
                     <div className="flex items-center gap-1.5 max-w-[320px]">

@@ -150,6 +150,8 @@ export default function AtendimentosPage() {
   // Classificação vinda do n8n (cadastros, pix, sped...). Vazio = todos.
   const [tipoAtendimentoFilter, setTipoAtendimentoFilter] = useState('')
   const [pdvOptions, setPdvOptions] = useState<string[]>([])
+  const [subsetorFilter, setSubsetorFilter] = useState('')
+  const [subsetorOptions, setSubsetorOptions] = useState<string[]>([])
 
   // Aplica um preset de período. Para 'custom', mantém as datas atuais
   // (apenas habilita a edição manual). Para os demais, calcula e seta.
@@ -185,9 +187,14 @@ export default function AtendimentosPage() {
   const [exportando, setExportando] = useState(false)
 
   useEffect(() => {
-    fetch('/api/atendimentos/pdvs')
-      .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d?.pdvs)) setPdvOptions(d.pdvs) })
+    Promise.all([
+      fetch('/api/atendimentos/pdvs').then((response) => response.json()),
+      fetch('/api/atendimentos/subsetores').then((response) => response.json()),
+    ])
+      .then(([pdvsData, subsetoresData]) => {
+        if (Array.isArray(pdvsData?.pdvs)) setPdvOptions(pdvsData.pdvs)
+        if (Array.isArray(subsetoresData?.subsetores)) setSubsetorOptions(subsetoresData.subsetores)
+      })
       .catch(() => {})
   }, [])
 
@@ -200,6 +207,7 @@ export default function AtendimentosPage() {
     const tipoContato = sp.get('tipo_contato')
     const sentimento = sp.get('sentimento')
     const tipoAtend = sp.get('tipo_atendimento')
+    const subsetor = sp.get('subsetor_nome')
     const comProb = sp.get('com_problema')
     const from = sp.get('from')
     const to = sp.get('to')
@@ -209,6 +217,7 @@ export default function AtendimentosPage() {
     if (tipoContato) setTipoContatoFilter(tipoContato as TipoContatoFilter)
     if (sentimento) setSentimentoFilter(sentimento as SentimentoFilter)
     if (tipoAtend) setTipoAtendimentoFilter(tipoAtend)
+    if (subsetor) setSubsetorFilter(subsetor)
     if (comProb === 'true') setComProblema(true)
     if (from) {
       setPeriodPreset('custom')
@@ -242,6 +251,7 @@ export default function AtendimentosPage() {
     searchDebounced,
     pdvFilter,
     tipoAtendimentoFilter,
+    subsetorFilter,
   ])
 
   // Constrói os params compartilhados entre /atendimentos e /atendimentos/stats
@@ -254,6 +264,7 @@ export default function AtendimentosPage() {
       if (sentimentoFilter !== 'all') params.set('sentimento', sentimentoFilter)
       if (pdvFilter) params.set('pdv', pdvFilter)
       if (tipoAtendimentoFilter) params.set('tipo_atendimento', tipoAtendimentoFilter)
+      if (subsetorFilter) params.set('subsetor_nome', subsetorFilter)
       if (comProblema) params.set('com_problema', 'true')
       if (soValidados) params.set('validados', 'true')
       if (searchDebounced) params.set('search', searchDebounced)
@@ -279,6 +290,7 @@ export default function AtendimentosPage() {
       sentimentoFilter,
       pdvFilter,
       tipoAtendimentoFilter,
+      subsetorFilter,
       comProblema,
       soValidados,
       searchDebounced,
@@ -715,6 +727,20 @@ export default function AtendimentosPage() {
               </option>
             ))}
         </select>
+
+        {subsetorOptions.length > 0 && (
+          <select
+            value={subsetorFilter}
+            onChange={(event) => setSubsetorFilter(event.target.value)}
+            title="Subsetor do atendimento"
+            className="bg-base border border-orange-500/30 rounded-xl px-3 py-1.5 text-sm text-orange-400 outline-none focus:border-orange-500/60 [color-scheme:dark] [&>option]:bg-base [&>option]:text-orange-400"
+          >
+            <option value="">Todos os subsetores</option>
+            {subsetorOptions.map((subsetor) => (
+              <option key={subsetor} value={subsetor}>{subsetor}</option>
+            ))}
+          </select>
+        )}
 
         {pdvOptions.length > 0 && (
           <select

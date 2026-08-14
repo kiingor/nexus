@@ -39,6 +39,7 @@ function applyNonStatusFilters<T extends FilterableQuery<T>>(
   const tipoContato = searchParams.get('tipo_contato')
   const pdv = searchParams.get('pdv')
   const tipoAtendimento = searchParams.get('tipo_atendimento')
+  const subsetorNome = searchParams.get('subsetor_nome')
 
   if (destino) query = query.eq('destino', destino)
   if (cnpj) query = query.eq('cnpj', cnpj)
@@ -70,6 +71,7 @@ function applyNonStatusFilters<T extends FilterableQuery<T>>(
   }
   if (pdv) query = query.eq('pdv', pdv)
   if (tipoAtendimento) query = query.eq('tipo_atendimento', tipoAtendimento)
+  if (subsetorNome) query = query.eq('subsetor_nome', subsetorNome)
 
   if (search) {
     const escaped = search.replace(/[%_]/g, '\\$&')
@@ -83,6 +85,7 @@ function applyNonStatusFilters<T extends FilterableQuery<T>>(
       `id_ligacao.ilike.${pattern}`,
       `validacao_transf.ilike.${pattern}`,
       `validacao_comentario.ilike.${pattern}`,
+      `subsetor_nome.ilike.${pattern}`,
     ]
     if (/^\d+$/.test(search)) parts.push(`id.eq.${search}`)
     query = query.or(parts.join(','))

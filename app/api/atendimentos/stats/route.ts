@@ -100,6 +100,18 @@ function applyNonStatusFilters<T extends FilterableQuery<T>>(
   return query
 }
 
+function matchesEffectiveDate(row: StatsRow, searchParams: URLSearchParams): boolean {
+  const from = searchParams.get('from')
+  const to = searchParams.get('to')
+  if (!from && !to) return true
+
+  const effective = Date.parse(row.data_hora_chegada || row.criado_em || '')
+  if (!Number.isFinite(effective)) return false
+  if (from && effective < Date.parse(from)) return false
+  if (to && effective > Date.parse(to)) return false
+  return true
+}
+
 export async function GET(request: NextRequest) {
   const supabase = createServerClient()
   const { searchParams } = new URL(request.url)
@@ -127,7 +139,8 @@ export async function GET(request: NextRequest) {
     offset += BATCH_SIZE
   }
 
-  const dedupedRows = dedupeConsecutiveTransfers(rawRows)
+  const effectiveRows = rawRows.filter((row) => matchesEffectiveDate(row, searchParams))
+  const dedupedRows = dedupeConsecutiveTransfers(effectiveRows)
   const visibleRows = dedupedRows.filter(
     (row) => !requestedStatus || requestedStatus === 'all' || row.status === requestedStatus
   )
@@ -146,6 +159,6 @@ export async function GET(request: NextRequest) {
     transferida: count('transferida'),
     interrompida: count('interrompida'),
     custoTotal,
-    duplicatesHidden: rawRows.length - dedupedRows.length,
+    duplicatesHidden: effectiveRows.length - dedupedRows.length,
   })
 }

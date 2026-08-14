@@ -108,6 +108,18 @@ function recordTime(row: DedupeRow): number {
   return Number.isFinite(timestamp) ? timestamp : 0
 }
 
+function matchesEffectiveDate(row: DedupeRow, searchParams: URLSearchParams): boolean {
+  const from = searchParams.get('from')
+  const to = searchParams.get('to')
+  if (!from && !to) return true
+
+  const effective = Date.parse(row.data_hora_chegada || row.criado_em || '')
+  if (!Number.isFinite(effective)) return false
+  if (from && effective < Date.parse(from)) return false
+  if (to && effective > Date.parse(to)) return false
+  return true
+}
+
 export async function GET(request: NextRequest) {
   const supabase = createServerClient()
   const { searchParams } = new URL(request.url)
@@ -147,7 +159,11 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const allDedupedRows = dedupeConsecutiveTransfers(rawRows)
+  // PostgREST pode devolver falsos positivos na expressão OR que implementa
+  // o fallback de data. Revalida no servidor com a regra canônica: chegada
+  // prevalece; criado_em só vale quando chegada é nula.
+  const effectiveRows = rawRows.filter((row) => matchesEffectiveDate(row, searchParams))
+  const allDedupedRows = dedupeConsecutiveTransfers(effectiveRows)
   const dedupedRows = allDedupedRows
     .filter((row) => !status || status === 'all' || row.status === status)
     .sort((a, b) => recordTime(b) - recordTime(a) || Number(b.id) - Number(a.id))
@@ -164,7 +180,7 @@ export async function GET(request: NextRequest) {
       page,
       pageSize,
       totalPages,
-      duplicatesHidden: rawRows.length - allDedupedRows.length,
+      duplicatesHidden: effectiveRows.length - allDedupedRows.length,
       truncated,
     })
   }
@@ -183,7 +199,7 @@ export async function GET(request: NextRequest) {
     page,
     pageSize,
     totalPages,
-    duplicatesHidden: rawRows.length - allDedupedRows.length,
+    duplicatesHidden: effectiveRows.length - allDedupedRows.length,
     truncated,
   })
 }

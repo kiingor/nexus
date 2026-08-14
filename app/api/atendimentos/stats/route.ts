@@ -105,10 +105,14 @@ function matchesEffectiveDate(row: StatsRow, searchParams: URLSearchParams): boo
   const to = searchParams.get('to')
   if (!from && !to) return true
 
-  const effective = Date.parse(row.data_hora_chegada || row.criado_em || '')
+  const effectiveValue =
+    row.status === 'resolvida_ia'
+      ? row.criado_em
+      : row.data_hora_chegada || row.criado_em
+  const effective = Date.parse(effectiveValue || '')
   if (!Number.isFinite(effective)) return false
   if (from && effective < Date.parse(from)) return false
-  if (to && effective > Date.parse(to)) return false
+  if (to && effective >= Date.parse(to)) return false
   return true
 }
 
